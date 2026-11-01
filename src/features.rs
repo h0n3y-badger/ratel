@@ -46,6 +46,8 @@ pub const FEATURE_NAMES: &[&str] = &[
     "imm_crc32", "imm_vm", "imm_apihash", "ror13", "rot_rate", "xor_rate", "xor_imm_rate",
     "call_reg_rate", "jmp_reg_rate", "rand_cmp_rate", "rand_cmp", "stackstr_runs",
     "stackstr_dword_rate", "antidisasm_jcc", "call_next", "entry_pushad", "ud2_rate", "xor_mem8", "arith_mem8_rate", "decode_loops", "cmp_int3", "imm_frida",
+    // --- roles (legitimate implementers; see indicators::ROLES)
+    "role_hypervisor", "role_container", "role_debugger", "role_wine",
 ];
 
 pub fn feature_index() -> &'static HashMap<&'static str, usize> {
@@ -73,6 +75,8 @@ pub struct Analysis {
     pub format: Format,
     pub feats: Vec<f32>,
     pub findings: Vec<Finding>,
+    /// Legitimate roles detected (index into ROLES, evidence).
+    pub roles: Vec<(usize, String)>,
 }
 
 struct Fv {
@@ -164,13 +168,14 @@ pub fn analyze(data: &[u8]) -> Analysis {
 
     import_features(&parsed.imports, &mut f, &mut findings);
     string_features(data, &parsed.imports, &mut f, &mut findings);
+    let roles = role_features(data, &parsed.imports, &mut f);
     crypto_const_features(data, &mut f, &mut findings);
     code_features(data, &parsed, &mut f, &mut findings);
     let few = f.get("n_imports_log") <= log2p(8.0) && f.get("is_static") == 0.0 && f.get("is_dotnet") == 0.0;
     f.set("few_imports", few as u8 as f32);
     derived_rules(&f, &mut findings);
 
-    Analysis { format, feats: f.v, findings }
+    Analysis { format, feats: f.v, findings, roles }
 }
 
 fn entropy_features(data: &[u8], f: &mut Fv) {
@@ -540,6 +545,51 @@ fn import_features(imports: &[String], f: &mut Fv, findings: &mut Vec<Finding>) 
         };
         findings.push(Finding { cap, rule: feat, strength, evidence: format!("imports {}", hit.join(", ")) });
     }
+}
+
+/// Role indicators (strings, ASCII + UTF-16LE, case-insensitive; or imports).
+fn role_features(data: &[u8], imports: &[String], f: &mut Fv) -> Vec<(usize, String)> {
+    static M: OnceLock<(AhoCorasick, Vec<(usize, &'static str)>)> = OnceLock::new();
+    let (ac, of) = M.get_or_init(|| {
+        let mut pats: Vec<Vec<u8>> = vec![];
+        let mut of = vec![];
+        for (ri, r) in ROLES.iter().enumerate() {
+            for p in r.pats {
+                pats.push(p.as_bytes().to_vec());
+                of.push((ri, *p));
+                pats.push(utf16le(p));
+                of.push((ri, *p));
+            }
+        }
+        (AhoCorasickBuilder::new().ascii_case_insensitive(true).build(&pats).unwrap(), of)
+    });
+    let mut seen: Vec<Vec<&'static str>> = vec![vec![]; ROLES.len()];
+    for mt in ac.find_overlapping_iter(data) {
+        let (ri, p) = of[mt.pattern().as_usize()];
+        if !seen[ri].contains(&p) {
+            seen[ri].push(p);
+        }
+    }
+    for imp in imports {
+        for (ri, r) in ROLES.iter().enumerate() {
+            if let Some(p) = r.pats.iter().find(|p| **p == imp.as_str()) {
+                if !seen[ri].contains(p) {
+                    seen[ri].push(p);
+                }
+            }
+        }
+    }
+    let mut out = vec![];
+    for (ri, r) in ROLES.iter().enumerate() {
+        f.set(r.feature, seen[ri].len() as f32);
+        if seen[ri].len() >= r.min {
+            let mut ev = seen[ri].clone();
+            ev.sort();
+            ev.truncate(5);
+            out.push((ri, ev.join(", ")));
+        }
+    }
+    out
 }
 
 struct StrMatchers {

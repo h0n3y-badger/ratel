@@ -304,3 +304,52 @@ pub const STD_SECTIONS: &[&str] = &[
     ".go.buildinfo", ".gopclntab", ".noptrdata", ".noptrbss", ".typelink", ".itablink",
     ".gosymtab", ".lrodata", ".ldata", ".lbss", ".tm_clone_table", ".preinit_array", ".relro_padding",
 ];
+
+/// "Role" indicators: code that *implements* the thing an evasion check looks for.
+/// A hypervisor contains every VM vendor string because it emulates those devices;
+/// a debugger reads /proc/<pid>/status and talks ptrace because that is its job.
+/// A role only discounts the capabilities it excuses, needs several distinct
+/// indicators, and is ignored when the binary also hides itself (see report.rs).
+pub struct RoleDef {
+    pub name: &'static str,
+    pub feature: &'static str,
+    pub excuses: &'static [&'static str],
+    pub min: usize,
+    pub pats: &'static [&'static str],
+}
+
+pub const ROLES: &[RoleDef] = &[
+    RoleDef {
+        name: "hypervisor", feature: "role_hypervisor", excuses: &["anti_vm"], min: 2,
+        pats: &[
+            "/dev/kvm", "/dev/vhost-net", "/dev/vhost-vsock", "/dev/vfio/vfio", "/dev/vboxdrv", "/dev/vboxdrvu",
+            "\\\\.\\VBoxDrv", "/dev/vmmon", "KVM_RUN", "KVM_CREATE_VM", "KVM_CAP_", "kvm_run", "virConnectOpen",
+            "virConnectOpenAuth", "libvirt.so", "WHvCreatePartition", "WinHvPlatform", "VBoxVMM", "VMMR3",
+            "hvf_vcpu", "Hypervisor.framework",
+        ],
+    },
+    RoleDef {
+        name: "container-runtime", feature: "role_container", excuses: &["anti_vm"], min: 3,
+        pats: &[
+            "pivot_root", "/proc/self/setgroups", "cgroup.procs", "runtime-spec", "/run/containerd",
+            "lowerdir=", "newuidmap", "newgidmap", "/var/lib/docker", "/var/lib/containers", "/var/lib/lxc",
+            "seccomp_rule_add", "oci-runtime", "io.containerd",
+        ],
+    },
+    RoleDef {
+        name: "debugger", feature: "role_debugger", excuses: &["anti_debug"], min: 3,
+        pats: &[
+            "libthread_db", "td_ta_new", "td_thr_get_info", "/proc/%d/mem", "/proc/%u/mem", "/proc/%ld/mem",
+            "PTRACE_GETREGS", "PTRACE_PEEKUSER", "PTRACE_GETREGSET", "PTRACE_SETOPTIONS", "PTRACE_SYSCALL",
+            "watchpoint", "hardware breakpoint", "single-step", "singlestep", "DW_TAG_", "DW_AT_", "debuginfod",
+            "SymInitialize", "StackWalk64", "vgdb", "DEBUG_EVENT",
+        ],
+    },
+    RoleDef {
+        name: "wine", feature: "role_wine", excuses: &["anti_vm", "anti_debug"], min: 2,
+        pats: &[
+            "Wine builtin DLL", "Wine placeholder DLL", "wine_server_call", "__wine_", "WINEPREFIX", "WINEDEBUG",
+            "WINESERVER", "wineserver", "WINELOADER",
+        ],
+    },
+];

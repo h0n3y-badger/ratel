@@ -18,6 +18,8 @@ implementations rather than memorised variants.
 Deterministic: fixed seeds everywhere; the same data gives the same model.
 """
 import argparse
+import concurrent.futures
+import multiprocessing
 import datetime
 import hashlib
 import json
@@ -45,10 +47,11 @@ CAP_FEATURES = {
         "api_ntsetinfothread", "api_outputdebugstring", "api_ptrace", "api_prctl", "api_toolhelp", "api_getprocaddress",
         "dyn_api_strings", "str_dbg_tools", "str_dbg_checks", "rdtsc", "inline_int3", "int2d", "int_03", "icebp",
         "pushf_popf", "trap_flag", "peb_access", "kuser_shared", "raw_syscalls", "sys_ptrace", "sys_prctl", "tls_callbacks",
-        "api_proc", "cmp_int3", "imm_frida"],
+        "api_proc", "cmp_int3", "imm_frida", "role_debugger", "role_wine"],
     "anti_vm": COMMON + ["api_sysinfo", "api_timing", "api_memstatus", "api_firmware", "api_userinput", "api_toolhelp",
         "str_vm_vendor", "str_vm_artifact", "str_sandbox", "cpuid", "cpuid_hv_leaf", "cpuid_leaf1", "cpuid_hvbit", "rdtsc",
-        "redpill", "io_port", "vmware_backdoor", "vmcall", "imm_vm", "dyn_api_strings", "api_getprocaddress"],
+        "redpill", "io_port", "vmware_backdoor", "vmcall", "imm_vm", "dyn_api_strings", "api_getprocaddress",
+        "role_hypervisor", "role_container", "role_wine"],
     "obfuscation": COMMON + ["dyn_api_strings", "api_dynres", "api_getprocaddress", "rand_str_ratio", "b64_strs", "hex_strs",
         "stackstr_runs", "stackstr_dword_rate", "rand_cmp", "rand_cmp_rate", "jmp_reg_rate", "call_reg_rate",
         "antidisasm_jcc", "call_next", "ror13", "imm_apihash", "xor_rate", "xor_imm_rate", "rot_rate", "peb_access",
@@ -66,6 +69,15 @@ CAP_FEATURES = {
     "network": COMMON + ["api_net", "api_http", "api_socket", "api_dns", "sys_socket", "str_net", "urls", "ipv4s", "domains",
         "raw_syscalls", "api_dynres", "dyn_api_strings"],
 }
+# Legitimate software that *implements* what evasion code checks for (train/corpus_legit.py).
+# These categories are negatives for the capabilities they implement, instead of being
+# masked like other real binaries where a strong rule fires.
+LEGIT_LABELS = {"hypervisor": {"anti_vm": 0}, "container": {"anti_vm": 0}, "debugger": {"anti_debug": 0},
+                "wine": {"anti_vm": 0, "anti_debug": 0}}
+# Whole projects held out of training to measure generalisation to unseen legit software.
+# vm_guest / sysinfo really do detect VMs: never relabelled, evaluation only.
+LEGIT_EVAL_ORIGINS = {"virtualbox", "firecracker", "podman", "crun", "lldb", "rizin", "ltrace"}
+LEGIT_EVAL_ONLY = {"vm_guest", "sysinfo"}
 TRAIN_GAMES = ("GarrysMod", "Half-Life 2", "Palworld", "Terraria", "tModLoader", "Kerbal Space Program")
 TARGET_FPR = 0.005  # on real binaries (calibration split)
 GB = dict(n_estimators=90, max_depth=3, learning_rate=0.12, subsample=0.8, min_samples_leaf=12, random_state=0)
@@ -77,6 +89,10 @@ def ratel_bin():
 
 def feature_names():
     return subprocess.run([ratel_bin(), "feature-names"], capture_output=True, text=True, check=True).stdout.split()
+
+
+def load_opt(path):
+    return load_feats(path) if os.path.exists(path) else {}
 
 
 def load_feats(path):
@@ -164,6 +180,13 @@ def pick_threshold(p_neg_real, p_val, y_val, target=TARGET_FPR):
     return min(max(best, floor, 0.05), 0.95)
 
 
+_JOB = None
+
+
+def _run_job(cap):
+    return _JOB(cap)
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--synth", default="data/synth")
@@ -198,8 +221,26 @@ def main():
     g_train = {p: v for p, v in real_games.items() if game_of(p) in TRAIN_GAMES}
     real_games = {p: v for p, v in real_games.items() if game_of(p) not in TRAIN_GAMES}
     real_tr = {**real_tr, **g_train}
-    R = [(x, weak_labels(x, ru, fi), p) for p, (x, ru) in sorted(real_tr.items())]
-    print(f"synthetic {len(S)}, real train {len(R)} (incl. {len(g_train)} game files), real holdout {len(real_ho)}, held-out games {len(real_games)}")
+    # Alpine = the deployment distro (musl builds); legit = software implementing VMs/debuggers.
+    alp_tr = load_opt("data/alpine_train.feats.jsonl")
+    alp_ho = load_opt("data/alpine_holdout.feats.jsonl")
+    legit = load_opt("data/legit_tools.feats.jsonl")
+    meta = {r["path"]: r for r in map(json.loads, open("data/legit_tools.jsonl"))} if legit else {}
+    R = [(x, weak_labels(x, ru, fi), p, 1.5) for p, (x, ru) in sorted({**real_tr, **alp_tr}.items())]
+    L_eval = []
+    n_legit_train = 0
+    for p, (x, ru) in sorted(legit.items()):
+        m = meta[p]
+        lab = weak_labels(x, ru, fi)
+        if m["category"] in LEGIT_EVAL_ONLY or m["origin"] in LEGIT_EVAL_ORIGINS:
+            L_eval.append((x, lab, p, m, ru))
+        else:
+            lab.update(LEGIT_LABELS[m["category"]])
+            R.append((x, lab, p, 3.0))
+            n_legit_train += 1
+    print(f"synthetic {len(S)}, real train {len(R)} (incl. {len(g_train)} game files, {len(alp_tr)} alpine, "
+          f"{n_legit_train} legit tools), real holdout {len(real_ho)}, alpine holdout {len(alp_ho)}, "
+          f"legit eval {len(L_eval)}, held-out games {len(real_games)}")
 
     # ---- family holdout split (deterministic)
     rng = random.Random(1234)
@@ -243,7 +284,7 @@ def main():
                 continue
             X.append(it[0][use])
             y.append(int(lab))
-            w.append(1.0 if not real else 1.5)
+            w.append(it[3] if real else 1.0)
         X = np.array(X, dtype=np.float32).reshape(-1, len(use))
         # Zero every column outside this capability's feature set: trees never split
         # on a constant, so the model can only use its allowed features.
@@ -254,12 +295,15 @@ def main():
     ho_lab = [weak_labels(x, ru, fi) for x, ru in real_ho.values()]
     Xg = np.array([x[use] for x, _ in real_games.values()], dtype=np.float32)
     games_paths = list(real_games.keys())
+    Xah = np.array([x[use] for x, _ in alp_ho.values()], dtype=np.float32).reshape(-1, len(use))
+    rah = np.array([ru for _, ru in alp_ho.values()]).reshape(-1, len(CAPS))
 
     report = {"trained": datetime.date.today().isoformat(), "params": GB, "target_fpr": TARGET_FPR,
               "held_out_families": sorted(test_fams), "counts": {"synth": len(S), "real_train": len(R),
               "real_holdout": len(real_ho), "games": len(real_games)}, "caps": {}}
     model = {"version": 1, "trained": report["trained"], "features": used_names, "caps": {}}
-    for cap in CAPS:
+    def cap_job(cap):
+        out = []
         assert all(n in used_names for n in CAP_FEATURES[cap]), cap
         Xs, ys, ws = mat(s_train, cap, False)
         Xr, yr, wr = mat(r_train, cap, True)
@@ -300,7 +344,16 @@ def main():
         pg = raw_predict(mj, Xg)
         top = sorted(zip(pg, games_paths), reverse=True)[:8]
         imp = sorted(zip(m.feature_importances_, used_names), reverse=True)[:10]
-        report["caps"][cap] = {
+        legit_eval = {}
+        for catg in sorted({it[3]["category"] for it in L_eval}):
+            its = [it for it in L_eval if it[3]["category"] == catg]
+            pl = raw_predict(mj, np.array([it[0][use] for it in its], dtype=np.float32))
+            rl = np.array([it[4][ci] for it in its])
+            legit_eval[catg] = {"n": len(its), "model_flag": round(float((pl >= thr).mean()), 4),
+                                "system_flag": round(float(((pl >= thr) | (rl >= 2)).mean()), 4)}
+        pah = raw_predict(mj, Xah) if len(Xah) else np.zeros(0)
+        alp_flag = float(((pah >= thr) | (rah[:, ci] >= 2)).mean()) if len(Xah) else None
+        entry = {
             "threshold": thr, "heldout_family_recall": rec, "heldout_family_auc": auc, "synthetic_neg_fpr": sfpr,
             "real_holdout_fpr": ho_fpr, "real_holdout_weak_recall": ho_rec,
             "n_train": int(len(y)), "n_pos": int((y == 1).sum()), "n_test_pos": int((yst == 1).sum()),
@@ -308,12 +361,14 @@ def main():
             "system_real_holdout_flag_rate": sys_ho_any,
             "games_flagged": int((pg >= thr).sum()), "games_top": [[round(float(p), 3), q] for p, q in top],
             "top_features": [[n, round(float(v), 4)] for v, n in imp],
+            "legit_eval": legit_eval, "system_alpine_holdout_flag_rate": alp_flag,
         }
-        print(f"{cap:12s} thr={thr:.3f} famrecall={rec if rec is None else round(rec, 3)} auc={auc if auc is None else round(auc, 4)} "
+        out.append(f"{cap:12s} thr={thr:.3f} famrecall={rec if rec is None else round(rec, 3)} auc={auc if auc is None else round(auc, 4)} "
               f"synthFPR={sfpr if sfpr is None else round(sfpr, 4)} realFPR={ho_fpr if ho_fpr is None else round(ho_fpr, 4)} "
               f"games={int((pg >= thr).sum())}/{len(pg)}")
-        print(f"{'':12s} system(model|rules>=2): recall={sys_rec if sys_rec is None else round(sys_rec, 3)} "
-              f"synthFPR={sys_sfpr if sys_sfpr is None else round(sys_sfpr, 4)} realFlagRate={round(sys_ho_any, 4)}")
+        out.append(f"{'':12s} system(model|rules>=2): recall={sys_rec if sys_rec is None else round(sys_rec, 3)} "
+              f"synthFPR={sys_sfpr if sys_sfpr is None else round(sys_sfpr, 4)} realFlagRate={round(sys_ho_any, 4)} alpineFlagRate={alp_flag if alp_flag is None else round(alp_flag, 4)}")
+        out.append(f"{'':12s} legit tools flagged (system): " + " ".join(f"{k}={v['system_flag']:.2f}/{v['n']}" for k, v in legit_eval.items()))
 
         # ---- final model on everything (same params), keeps the CV threshold
         extra = (mat(s_val, cap, False), mat(s_test, cap, False), mat(r_calib, cap, True))
@@ -326,8 +381,19 @@ def main():
         # Re-pick the threshold for the final model on the (now seen) calibration split, but never below the CV one.
         thr_final = max(thr, pick_threshold(pfin[yc == 0], None, None))
         fj["threshold"] = thr_final
-        report["caps"][cap]["threshold_final"] = thr_final
+        entry["threshold_final"] = thr_final
+        return entry, fj, out
+
+    # Six independent models: fit them in parallel (fork shares the matrices copy-on-write).
+    global _JOB
+    _JOB = cap_job
+    with concurrent.futures.ProcessPoolExecutor(len(CAPS), mp_context=multiprocessing.get_context("fork")) as ex:
+        results = list(ex.map(_run_job, CAPS))
+    for cap, (entry, fj, out) in zip(CAPS, results):
+        print("\n".join(out))
+        report["caps"][cap] = entry
         model["caps"][cap] = fj
+    report["counts"].update({"alpine_holdout": len(alp_ho), "legit_eval": len(L_eval), "legit_train": n_legit_train})
 
     if a.random_split:
         print("random split: no model written")

@@ -3,6 +3,7 @@ mod indicators;
 mod model;
 mod net;
 mod report;
+mod trust;
 
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicUsize, Ordering};
@@ -16,6 +17,12 @@ usage:
       --all                       also print files that look clean
       --min-risk X                only print files with risk >= X (0..1)
       --explain                   list every rule finding, not just the top ones
+      --allow FILE                extra sha256 allowlist (repeatable); defaults:
+                                  /etc/ratel/allow.list, ~/.config/ratel/allow.list
+      --no-pkg-trust              don't cap package-verified files at `low`
+      --integrity                 hash every file and check it against the package
+                                  database (finds modified package files even if clean)
+  ratel allow PATH...             print `<sha256>  <path>` allowlist lines (baseline)
   ratel features [opts] PATH...   dump feature vectors as JSON lines (training)
       --list FILE                 read paths from FILE (one per line)
   ratel feature-names             print the feature names, one per line
@@ -44,6 +51,9 @@ pub struct Opts {
     pub watch: u64,
     pub interval_ms: u64,
     pub scan_exes: bool,
+    pub allow: Vec<String>,
+    pub no_pkg_trust: bool,
+    pub integrity: bool,
     pub paths: Vec<PathBuf>,
 }
 
@@ -51,7 +61,8 @@ fn parse_opts(args: &[String]) -> Result<Opts, String> {
     let mut o = Opts {
         json: false, all: false, explain: false, min_risk: 0.0,
         jobs: std::thread::available_parallelism().map_or(2, |n| n.get()).min(4),
-        max_size: 128, model: None, list: None, watch: 0, interval_ms: 1000, scan_exes: false, paths: vec![],
+        max_size: 128, model: None, list: None, watch: 0, interval_ms: 1000, scan_exes: false,
+        allow: vec![], no_pkg_trust: false, integrity: false, paths: vec![],
     };
     let mut i = 0;
     let val = |i: &mut usize| -> Result<String, String> {
@@ -64,6 +75,9 @@ fn parse_opts(args: &[String]) -> Result<Opts, String> {
             "--all" => o.all = true,
             "--explain" => o.explain = true,
             "--scan-exes" => o.scan_exes = true,
+            "--no-pkg-trust" => o.no_pkg_trust = true,
+            "--integrity" => o.integrity = true,
+            "--allow" => o.allow.push(val(&mut i)?),
             "--min-risk" => o.min_risk = val(&mut i)?.parse().map_err(|_| "bad --min-risk")?,
             "--jobs" | "-j" => o.jobs = val(&mut i)?.parse::<usize>().map_err(|_| "bad --jobs")?.max(1),
             "--max-size" => o.max_size = val(&mut i)?.parse().map_err(|_| "bad --max-size")?,
@@ -228,17 +242,41 @@ fn main() {
             }
             let mut files = vec![];
             collect(&o.paths, &mut files);
+            let kind = trust::detect_pkg_kind();
+            let mut allow_files: Vec<(String, bool)> = trust::default_allowlists().into_iter().map(|f| (f, false)).collect();
+            allow_files.extend(o.allow.iter().map(|f| (f.clone(), true)));
+            // Load the allowlist up front (fails fast on a bad --allow); the package DB lazily.
+            let mut trust_db: Option<trust::Trust> = None;
             let mut worst = 0.0f64;
             let mut n = 0usize;
-            par_files(&files, o.jobs, |p| read_candidate(p, max).map(|d| report::assess(&features::analyze(&d), &m)), |p, r| {
+            let integrity = o.integrity;
+            par_files(&files, o.jobs, |p| read_candidate(p, max).map(|d| {
+                let r = report::assess(&features::analyze(&d), &m);
+                // Hash only what provenance can change: non-clean files (or all, with --integrity).
+                let h = (integrity || r.risk >= 0.25).then(|| trust::hash(&d, kind));
+                (r, h)
+            }), |p, (mut r, h)| {
                 n += 1;
-                worst = worst.max(r.risk);
+                if let Some(h) = h {
+                    let t = trust_db.get_or_insert_with(|| {
+                        let wanted = files.iter().filter_map(|f| std::fs::canonicalize(f).ok()).collect();
+                        trust::Trust::load(kind, &allow_files, &wanted).unwrap_or_else(|e| die(&e))
+                    });
+                    let canon = std::fs::canonicalize(p).unwrap_or_else(|_| p.to_path_buf());
+                    report::apply_origin(&mut r, t.origin(&canon, &h), !o.no_pkg_trust);
+                }
+                worst = worst.max(report::alerting_risk(&r));
                 report::print(p, &r, &o);
             });
             if !o.json {
                 eprintln!("ratel: scanned {n} ELF/PE file(s), highest risk {worst:.2}");
             }
             std::process::exit(if worst >= 0.75 { 1 } else { 0 });
+        }
+        "allow" => {
+            let mut files = vec![];
+            collect(&o.paths, &mut files);
+            trust::print_allow_lines(&files, max);
         }
         "probs" => {
             // Raw model probabilities (for checking parity with the Python trainer).
