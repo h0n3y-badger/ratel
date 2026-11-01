@@ -45,7 +45,7 @@ pub const FEATURE_NAMES: &[&str] = &[
     "sys_socket", "aesni", "sha_ni", "pclmul", "imm_tea", "imm_sha", "imm_md5", "imm_chacha",
     "imm_crc32", "imm_vm", "imm_apihash", "ror13", "rot_rate", "xor_rate", "xor_imm_rate",
     "call_reg_rate", "jmp_reg_rate", "rand_cmp_rate", "rand_cmp", "stackstr_runs",
-    "stackstr_dword_rate", "antidisasm_jcc", "call_next", "entry_pushad", "ud2_rate",
+    "stackstr_dword_rate", "antidisasm_jcc", "call_next", "entry_pushad", "ud2_rate", "xor_mem8", "arith_mem8_rate", "decode_loops", "cmp_int3", "imm_frida",
 ];
 
 pub fn feature_index() -> &'static HashMap<&'static str, usize> {
@@ -122,6 +122,8 @@ struct CodeRegion {
 struct Parsed {
     /// false for non-x86 machines and .NET assemblies: don't disassemble.
     x86: bool,
+    /// The binary implements (exports) ptrace itself: it's a libc, not a caller.
+    defines_ptrace: bool,
     imports: Vec<String>,
     code: Vec<CodeRegion>,
     bitness: u32,
@@ -156,7 +158,7 @@ pub fn analyze(data: &[u8]) -> Analysis {
                 evidence: "headers fail to parse (truncated or deliberately malformed)".into() });
         }
         // Fall back to sweeping the whole file only for tiny raw blobs (shellcode-like).
-        Parsed { x86: false, imports: vec![], code: vec![], bitness: 64, entry_off: None }
+        Parsed { x86: false, defines_ptrace: false, imports: vec![], code: vec![], bitness: 64, entry_off: None }
     });
     f.set("is_64", (parsed.bitness == 64) as u8 as f32);
 
@@ -355,7 +357,7 @@ fn parse_pe(data: &[u8], f: &mut Fv, findings: &mut Vec<Finding>) -> Option<Pars
         f.set("upx_marker", 1.0);
     }
     let x86 = matches!(pe.header.coff_header.machine, 0x14c | 0x8664) && !is_dotnet;
-    Some(Parsed { x86, imports, code, bitness, entry_off })
+    Some(Parsed { x86, defines_ptrace: false, imports, code, bitness, entry_off })
 }
 
 fn rva_to_off(secs: &[goblin::pe::section_table::SectionTable], rva: u32) -> Option<usize> {
@@ -505,7 +507,8 @@ fn parse_elf(data: &[u8], f: &mut Fv, findings: &mut Vec<Finding>) -> Option<Par
         }
     }
     let x86 = matches!(elf.header.e_machine, goblin::elf::header::EM_X86_64 | goblin::elf::header::EM_386);
-    Some(Parsed { x86, imports, code, bitness, entry_off })
+    let defines_ptrace = elf.dynsyms.iter().any(|s| s.st_shndx != 0 && elf.dynstrtab.get_at(s.st_name) == Some("ptrace"));
+    Some(Parsed { x86, defines_ptrace, imports, code, bitness, entry_off })
 }
 
 fn import_features(imports: &[String], f: &mut Fv, findings: &mut Vec<Finding>) {
@@ -522,9 +525,12 @@ fn import_features(imports: &[String], f: &mut Fv, findings: &mut Vec<Finding>) 
             continue;
         }
         let (cap, strength) = match *feat {
-            "api_isdebuggerpresent" | "api_checkremotedbg" | "api_ntsetinfothread" => ("anti_debug", 2),
-            "api_ntqip" | "api_outputdebugstring" | "api_ptrace" => ("anti_debug", 1),
-            "api_memfd" => ("packed", 2),
+            "api_checkremotedbg" | "api_ntsetinfothread" => ("anti_debug", 2),
+            // IsDebuggerPresent alone is MSVC CRT boilerplate: weak hint only.
+            "api_isdebuggerpresent" | "api_ntqip" | "api_ptrace" => ("anti_debug", 1),
+            // memfd_create alone is shared memory (Wayland, GTK); executing from it is the signal.
+            "api_memfd" if hit.iter().any(|h| *h == "fexecve" || *h == "execveat") => ("packed", 2),
+            "api_memfd" => ("packed", 1),
             "api_injection" => ("obfuscation", 1),
             "api_firmware" | "api_userinput" => ("anti_vm", 1),
             "api_http" => ("network", 2),
@@ -850,11 +856,11 @@ fn code_features(data: &[u8], p: &Parsed, f: &mut Fv, findings: &mut Vec<Finding
         "icebp", "redpill", "io_port", "vmware_backdoor", "vmcall", "pushf_popf", "trap_flag", "peb_access",
         "kuser_shared", "raw_syscalls", "sys_ptrace", "sys_prctl", "sys_memfd", "sys_mprotect", "sys_execve",
         "sys_socket", "aesni", "sha_ni", "pclmul", "imm_tea", "imm_sha", "imm_md5", "imm_chacha", "imm_crc32",
-        "imm_vm", "imm_apihash", "ror13", "rand_cmp", "stackstr_runs", "antidisasm_jcc", "call_next"] {
+        "imm_vm", "imm_apihash", "ror13", "rand_cmp", "stackstr_runs", "antidisasm_jcc", "call_next", "xor_mem8", "decode_loops", "cmp_int3", "imm_frida"] {
         f.set(key, log2p(st.get(key)));
     }
     for (key, src) in [("rot_rate", "rot"), ("xor_rate", "xor"), ("xor_imm_rate", "xor_imm"), ("call_reg_rate", "call_reg"),
-        ("jmp_reg_rate", "jmp_reg"), ("rand_cmp_rate", "rand_cmp"), ("stackstr_dword_rate", "stackstr_dword"), ("ud2_rate", "ud2")] {
+        ("jmp_reg_rate", "jmp_reg"), ("rand_cmp_rate", "rand_cmp"), ("stackstr_dword_rate", "stackstr_dword"), ("ud2_rate", "ud2"), ("arith_mem8_rate", "arith_mem8")] {
         f.set(key, st.get(src) / k);
     }
 
@@ -891,7 +897,7 @@ fn code_features(data: &[u8], p: &Parsed, f: &mut Fv, findings: &mut Vec<Finding
     if c("kuser_shared") > 0 {
         push("anti_debug", "kuser_shared_data", 1, format!("reads KUSER_SHARED_DATA (0x7FFE0000){}", at("kuser_shared")));
     }
-    if c("sys_ptrace") > 0 {
+    if c("sys_ptrace") > 0 && !p.defines_ptrace {
         push("anti_debug", "raw_ptrace_syscall", 2, format!("direct ptrace syscall{}", at("sys_ptrace")));
     }
     if c("sys_memfd") > 0 {
@@ -907,6 +913,15 @@ fn code_features(data: &[u8], p: &Parsed, f: &mut Fv, findings: &mut Vec<Finding
     }
     if c("stackstr_runs") >= 3 {
         push("obfuscation", "stack_strings", 1, format!("{} stack-built strings{}", c("stackstr_runs"), at("stackstr_runs")));
+    }
+    if c("imm_frida") > 0 {
+        push("anti_debug", "frida_port", 2, format!("Frida default port 27042 in code{}", at("imm_frida")));
+    }
+    if c("cmp_int3") >= 2 {
+        push("anti_debug", "breakpoint_scan", 1, format!("byte compares against 0xCC x{}{}", c("cmp_int3"), at("cmp_int3")));
+    }
+    if c("decode_loops") >= 3 {
+        push("obfuscation", "decode_loops", 1, format!("{} byte-decoding loops{}", c("decode_loops"), at("decode_loops")));
     }
     if c("antidisasm_jcc") > 0 {
         push("obfuscation", "anti_disassembly", 2, format!("complementary jcc pairs to one target x{}{}", c("antidisasm_jcc"), at("antidisasm_jcc")));
@@ -934,6 +949,7 @@ fn sweep(bytes: &[u8], vaddr: u64, bitness: u32, st: &mut CodeStats) {
     let mut pending_int3: Option<(Mnemonic, u64)> = None;
     let mut stack_run = 0u32;
     let mut pushf_at: Option<u64> = None;
+    let mut last_mem8_ip: u64 = 0;
     let mut idx: u64 = 0;
     // Rare instructions only count when the neighbourhood decodes like real code:
     // a candidate is dropped if another junk-class instruction sits within 8
@@ -1009,7 +1025,9 @@ fn sweep(bytes: &[u8], vaddr: u64, bitness: u32, st: &mut CodeStats) {
             if ins.op_kind(op) == OpKind::Memory {
                 let seg = ins.memory_segment();
                 let disp = ins.memory_displacement64();
-                if (seg == Register::FS && disp == 0x30 && bitness == 32) || (seg == Register::GS && disp == 0x60 && bitness == 64) {
+                if (seg == Register::FS && (disp == 0x30 || disp == 0x18) && bitness == 32)
+                    || (seg == Register::GS && (disp == 0x60 || disp == 0x30) && bitness == 64)
+                {
                     st.hit("peb_access", ip);
                 }
                 if ins.memory_base() == Register::None && (0x7FFE_0000..0x7FFE_1000).contains(&(disp as u32)) && disp >> 32 == 0 {
@@ -1115,6 +1133,12 @@ fn sweep(bytes: &[u8], vaddr: u64, bitness: u32, st: &mut CodeStats) {
                     && ins.op_register(0) == ins.op_register(1);
                 if !same {
                     st.hit("xor", ip);
+                    // Byte-wise XOR touching memory: the classic string/blob decode loop body.
+                    if m == Mnemonic::Xor && ins.op_count() == 2 && (ins.op_kind(0) == OpKind::Memory || ins.op_kind(1) == OpKind::Memory)
+                        && ins.memory_size().size() == 1
+                    {
+                        st.hit("xor_mem8", ip);
+                    }
                     if imm_of(&ins, 1).is_some() {
                         st.hit("xor_imm", ip);
                     }
@@ -1145,6 +1169,28 @@ fn sweep(bytes: &[u8], vaddr: u64, bitness: u32, st: &mut CodeStats) {
             }
             Mnemonic::Ud2 => st.hit("ud2", ip),
             _ => {}
+        }
+        // Byte-wise arithmetic on memory (decoder loop bodies) and simple loop detection:
+        // a short backward branch whose body contains such an instruction.
+        let mem8 = ins.op_count() >= 1 && (0..ins.op_count()).any(|i| ins.op_kind(i) == OpKind::Memory) && ins.memory_size().size() == 1;
+        if mem8 && matches!(m, Mnemonic::Xor | Mnemonic::Add | Mnemonic::Sub | Mnemonic::Rol | Mnemonic::Ror | Mnemonic::Not | Mnemonic::Neg) {
+            st.hit("arith_mem8", ip);
+            last_mem8_ip = ip;
+        }
+        if mem8 && m == Mnemonic::Cmp && imm_of(&ins, 1).map_or(false, |v| v as u8 == 0xCC) {
+            st.hit("cmp_int3", ip);
+        }
+        if let Some(v) = (0..ins.op_count()).find_map(|i| imm_of(&ins, i)) {
+            if v == 27042 || v == 0xA269 {
+                st.hit("imm_frida", ip);
+            }
+        }
+        if matches!(ins.op_kind(0), OpKind::NearBranch16 | OpKind::NearBranch32 | OpKind::NearBranch64) && m != Mnemonic::Call {
+            let t = ins.near_branch_target();
+            if t < ip && ip - t <= 160 && last_mem8_ip >= t && last_mem8_ip < ip {
+                st.hit("decode_loops", ip);
+                last_mem8_ip = 0;
+            }
         }
         // Anti-disassembly: jz X ; jnz X (complementary conditions, same target).
         let cc = ins.condition_code();
@@ -1248,5 +1294,36 @@ fn derived_rules(f: &Fv, findings: &mut Vec<Finding>) {
     if f.get("invalid_ratio") > 0.05 && f.get("n_insn_log2") > 8.0 {
         findings.push(Finding { cap: "packed", rule: "undecodable_code", strength: 2,
             evidence: format!("{:.0}% of executable bytes don't decode as x86", f.get("invalid_ratio") * 100.0) });
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn feature_names_unique() {
+        let mut v = FEATURE_NAMES.to_vec();
+        v.sort();
+        v.dedup();
+        assert_eq!(v.len(), FEATURE_NAMES.len());
+    }
+
+    #[test]
+    fn analyzes_own_binary_without_panicking() {
+        let exe = std::env::current_exe().unwrap();
+        let data = std::fs::read(exe).unwrap();
+        let a = analyze(&data);
+        assert_eq!(a.format, Format::Elf);
+        assert_eq!(a.feats.len(), FEATURE_NAMES.len());
+        assert!(a.feats.iter().all(|x| x.is_finite()));
+    }
+
+    #[test]
+    fn garbage_and_truncated_inputs_are_safe() {
+        for d in [&b"MZ"[..], b"\x7fELF\x02\x01\x01", &[0u8; 100][..], b"MZ\x90\x00garbagegarbagegarbage"] {
+            let a = analyze(d);
+            assert!(a.feats.iter().all(|x| x.is_finite()));
+        }
     }
 }

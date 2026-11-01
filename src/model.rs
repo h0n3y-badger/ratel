@@ -95,3 +95,25 @@ impl Model {
         out
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn embedded_model_loads_and_matches_scanner_features() {
+        let m = Model::load(EMBEDDED).expect("embedded model parses");
+        assert!(!m.is_empty(), "no model embedded");
+        // Every model feature must exist in the scanner, or it would silently read 0.
+        assert!(m.remap.iter().all(|r| r.is_some()), "model uses a feature the scanner doesn't produce");
+        let p = m.predict(&vec![0.0; FEATURE_NAMES.len()]);
+        assert!(p.iter().all(|x| x.map_or(true, |(v, t)| (0.0..=1.0).contains(&v) && (0.0..1.0).contains(&t))));
+    }
+
+    #[test]
+    fn deterministic() {
+        let m = Model::load(EMBEDDED).unwrap();
+        let x: Vec<f32> = (0..FEATURE_NAMES.len()).map(|i| (i % 7) as f32 * 0.5).collect();
+        assert_eq!(format!("{:?}", m.predict(&x)), format!("{:?}", m.predict(&x)));
+    }
+}

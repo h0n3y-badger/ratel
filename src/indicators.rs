@@ -15,13 +15,12 @@ pub const API_GROUPS: &[ApiGroup] = &[
     ApiGroup {
         feature: "api_antidbg",
         apis: &[
-            "IsDebuggerPresent", "CheckRemoteDebuggerPresent", "NtQueryInformationProcess",
+            "CheckRemoteDebuggerPresent", "NtQueryInformationProcess",
             "ZwQueryInformationProcess", "NtSetInformationThread", "ZwSetInformationThread",
-            "OutputDebugStringA", "OutputDebugStringW", "DebugActiveProcess", "NtQueryObject",
-            "NtClose", "GetThreadContext", "SetUnhandledExceptionFilter",
-            "RtlAddVectoredExceptionHandler", "AddVectoredExceptionHandler", "NtQuerySystemInformation",
-            "ZwQuerySystemInformation", "DbgBreakPoint", "DbgUiRemoteBreakin", "NtYieldExecution",
-            "BlockInput", "FindWindowA", "FindWindowW", "ptrace", "prctl",
+            "DebugActiveProcess", "NtQueryObject", "GetThreadContext", "NtQuerySystemInformation",
+            "ZwQuerySystemInformation", "DbgUiRemoteBreakin", "NtYieldExecution", "BlockInput", "ptrace",
+            // IsDebuggerPresent / SetUnhandledExceptionFilter / OutputDebugString are imported by the
+            // MSVC CRT in nearly every Windows binary; they are kept as separate key-API features only.
         ],
     },
     ApiGroup {
@@ -159,7 +158,8 @@ pub const STR_GROUPS: &[StrGroup] = &[
             "hardware\\acpi\\dsdt", "hardware\\description\\system", "systembiosversion",
             "videobiosversion", "08:00:27", "00:0c:29", "00:50:56", "00:05:69", "00:1c:14",
             "52:54:00", "00:16:3e", "00:1c:42", "080027", "000c29", "005056", "wine_get_unix_file_name",
-            "wine_get_version", "/.dockerenv", "/run/.containerenv", "container=",
+            "wine_get_version", "/.dockerenv", "/run/.containerenv", "container=", "systemd-detect-virt",
+            "virt-what", "/sys/hypervisor", "hypervisor", "vmware tools", "vboxclient",
         ],
     },
     StrGroup {
@@ -192,7 +192,7 @@ pub const STR_GROUPS: &[StrGroup] = &[
             "processdebugport", "processdebugflags", "processdebugobjecthandle",
             "threadhidefromdebugger", "kernel_debugger", "systemkerneldebuggerinformation",
             "/proc/sys/kernel/yama/ptrace_scope", "gum-js-loop", "gmain", "linjector",
-            "re.frida.server", "frida-agent", "/proc/self/task", "dbgbreakpoint",
+            "re.frida.server", "frida-agent", "/proc/self/task", "dbgbreakpoint", "csrss.exe",
         ],
     },
     StrGroup {
@@ -236,6 +236,7 @@ pub const DYN_API_NAMES: &[&str] = &[
     "CryptDecrypt", "CryptEncrypt", "BCryptDecrypt", "RtlDecompressBuffer", "NtDelayExecution",
     "GetTickCount", "Sleep", "GlobalMemoryStatusEx", "CreateToolhelp32Snapshot", "ptrace",
     "memfd_create", "mprotect", "fexecve", "OutputDebugStringA", "GetSystemFirmwareTable",
+    "NtQuerySystemInformation", "NtSetInformationThread", "NtAllocateVirtualMemory", "NtProtectVirtualMemory",
 ];
 
 /// Byte-pattern crypto constants (findcrypt-style), LE unless noted.

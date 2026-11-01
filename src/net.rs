@@ -140,6 +140,10 @@ fn is_local(ip: &IpAddr) -> bool {
     }
 }
 
+const COMMON_DOT_DIRS: &[&str] = &[".local", ".cargo", ".rustup", ".var", ".config", ".cache", ".npm", ".nvm", ".steam",
+    ".mozilla", ".vscode", ".vscode-server", ".bun", ".deno", ".pyenv", ".sdkman", ".gradle", ".m2", ".dotnet", ".opam",
+    ".ghcup", ".nix-profile", ".juliaup", ".wine", ".docker"];
+
 const ODD_PORTS: &[u16] = &[4444, 4445, 1337, 31337, 6666, 6667, 6668, 6669, 5555, 2222, 9001, 9030, 9050, 1080, 3389, 5900, 23];
 
 fn proc_flags(p: &Proc, socks: &[&Sock]) -> Vec<Flag> {
@@ -151,8 +155,12 @@ fn proc_flags(p: &Proc, socks: &[&Sock]) -> Vec<Flag> {
         f.push(Flag { severity: "medium", rule: "deleted_exe", detail: format!("binary deleted after start: {exe} (also happens after package upgrades)") });
     }
     let path = exe.trim_end_matches(" (deleted)");
-    if ["/tmp/", "/var/tmp/", "/dev/shm/", "/run/shm/"].iter().any(|d| path.starts_with(d)) || path.contains("/.") {
-        f.push(Flag { severity: "high", rule: "exe_in_temp_or_hidden", detail: format!("binary lives in a temp/hidden path: {path}") });
+    if ["/tmp/", "/var/tmp/", "/dev/shm/", "/run/shm/"].iter().any(|d| path.starts_with(d)) {
+        f.push(Flag { severity: "high", rule: "exe_in_temp", detail: format!("binary runs from a world-writable temp dir: {path}") });
+    } else if path.rsplit('/').next().map_or(false, |b| b.starts_with('.')) {
+        f.push(Flag { severity: "medium", rule: "hidden_exe", detail: format!("binary has a hidden file name: {path}") });
+    } else if let Some(dir) = path.split('/').find(|c| c.starts_with('.') && c.len() > 1 && !COMMON_DOT_DIRS.contains(c)) {
+        f.push(Flag { severity: "low", rule: "exe_in_hidden_dir", detail: format!("binary inside hidden directory {dir}: {path}") });
     }
     if p.cmdline.starts_with('[') && !exe.is_empty() {
         f.push(Flag { severity: "high", rule: "fake_kernel_thread", detail: format!("named like a kernel thread ({}) but has an executable {exe}", p.cmdline) });
@@ -223,7 +231,7 @@ impl Beacons {
             let mean = gaps.iter().sum::<f64>() / gaps.len() as f64;
             let var = gaps.iter().map(|g| (g - mean).powi(2)).sum::<f64>() / gaps.len() as f64;
             let cv = var.sqrt() / mean.max(1e-9);
-            if mean >= 2.0 && cv < 0.25 {
+            if mean >= 1.0 && cv < 0.25 {
                 out.push((format!("pid {pid} ({comm}) -> {ip}:{port}"), mean, cv, ts.len()));
             }
         }

@@ -27,7 +27,7 @@ usage:
   ratel info                      show embedded model info
 
 common opts:
-  --jobs N        worker threads (default: number of CPUs, max 8)
+  --jobs N        worker threads (default: number of CPUs, max 4)
   --max-size MB   skip files larger than this (default 128)
   --model FILE    use a model JSON instead of the embedded one
 ";
@@ -50,7 +50,7 @@ pub struct Opts {
 fn parse_opts(args: &[String]) -> Result<Opts, String> {
     let mut o = Opts {
         json: false, all: false, explain: false, min_risk: 0.0,
-        jobs: std::thread::available_parallelism().map_or(2, |n| n.get()).min(8),
+        jobs: std::thread::available_parallelism().map_or(2, |n| n.get()).min(4),
         max_size: 128, model: None, list: None, watch: 0, interval_ms: 1000, scan_exes: false, paths: vec![],
     };
     let mut i = 0;
@@ -110,12 +110,29 @@ fn collect(paths: &[PathBuf], out: &mut Vec<PathBuf>) {
     }
 }
 
-/// Reads a file if it looks like ELF/PE and is under the size cap.
-pub fn read_candidate(p: &Path, max: u64) -> Option<Vec<u8>> {
+/// File contents: memory-mapped for regular files (page cache, not heap), read
+/// into memory for things that can't be mapped (/proc/<pid>/exe of a memfd).
+pub enum Bytes {
+    Map(memmap2::Mmap),
+    Heap(Vec<u8>),
+}
+impl std::ops::Deref for Bytes {
+    type Target = [u8];
+    fn deref(&self) -> &[u8] {
+        match self {
+            Bytes::Map(m) => m,
+            Bytes::Heap(v) => v,
+        }
+    }
+}
+
+/// Opens a file if it looks like ELF/PE and is under the size cap.
+pub fn read_candidate(p: &Path, max: u64) -> Option<Bytes> {
     use std::io::Read;
     let mut fh = std::fs::File::open(p).ok()?;
-    let len = fh.metadata().ok()?.len();
-    if len < 64 || len > max {
+    let md = fh.metadata().ok()?;
+    let len = md.len();
+    if !md.is_file() || len < 64 || len > max {
         return None;
     }
     let mut head = [0u8; 4];
@@ -123,10 +140,17 @@ pub fn read_candidate(p: &Path, max: u64) -> Option<Vec<u8>> {
     if &head != b"\x7fELF" && &head[..2] != b"MZ" {
         return None;
     }
+    // SAFETY: read-only private mapping; if the file is truncated underneath us the
+    // process could SIGBUS, which for a scanner of mostly-static binaries is acceptable.
+    if let Ok(m) = unsafe { memmap2::MmapOptions::new().len(len as usize).map(&fh) } {
+        #[cfg(unix)]
+        let _ = m.advise(memmap2::Advice::Sequential);
+        return Some(Bytes::Map(m));
+    }
     let mut buf = head.to_vec();
     buf.reserve(len as usize);
     fh.read_to_end(&mut buf).ok()?;
-    Some(buf)
+    Some(Bytes::Heap(buf))
 }
 
 /// Runs `work` over files on a small thread pool; results come back in any order.

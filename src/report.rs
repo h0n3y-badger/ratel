@@ -26,7 +26,12 @@ pub struct CapScore {
     pub conf: f64,
     pub model: Option<f64>,
     pub rules: f64,
+    /// Detected by the model with no supporting rule finding.
+    pub model_only: bool,
 }
+
+/// Calibrated model confidence needed to report a capability with no rule evidence.
+const MODEL_ONLY_MIN: f64 = 0.8;
 
 /// Risk weights per capability (index = CAPS order).
 const W: [f64; 6] = [0.30, 0.35, 0.25, 0.30, 0.05, 0.10];
@@ -63,8 +68,12 @@ pub fn assess(a: &Analysis, m: &Model) -> Assessment {
         let fs: Vec<&Finding> = a.findings.iter().filter(|f| f.cap == *cap).collect();
         let rules = rule_conf(&fs);
         let model = preds[ci].map(|(p, t)| calibrate(p, t));
-        let conf = model.unwrap_or(0.0).max(rules);
-        caps.push(CapScore { cap, conf, model, rules });
+        // Without any rule evidence for this capability, the model alone only
+        // counts when it is very confident: every report should have a "why".
+        let m = model.unwrap_or(0.0);
+        let m = if fs.is_empty() && m < MODEL_ONLY_MIN { m.min(0.49) } else { m };
+        let conf = m.max(rules);
+        caps.push(CapScore { cap, conf, model, rules, model_only: fs.is_empty() && conf >= 0.5 });
     }
     let c = |n: &str| caps.iter().find(|x| x.cap == n).unwrap().conf;
     let mut keep = 1.0;
@@ -102,7 +111,7 @@ pub fn print(p: &Path, r: &Assessment, o: &Opts) {
     }
     if o.json {
         let caps: serde_json::Map<String, serde_json::Value> = r.caps.iter()
-            .map(|c| (c.cap.to_string(), serde_json::json!({"conf": round(c.conf), "model": c.model.map(round), "rules": round(c.rules)})))
+            .map(|c| (c.cap.to_string(), serde_json::json!({"conf": round(c.conf), "model": c.model.map(round), "rules": round(c.rules), "model_only": c.model_only})))
             .collect();
         let line = serde_json::json!({
             "path": p.to_string_lossy(), "format": r.format, "risk": round(r.risk), "verdict": r.verdict,
@@ -112,7 +121,8 @@ pub fn print(p: &Path, r: &Assessment, o: &Opts) {
         println!("{line}");
         return;
     }
-    let det: Vec<String> = r.caps.iter().filter(|c| c.conf >= 0.5).map(|c| format!("{}({:.2})", c.cap, c.conf)).collect();
+    let det: Vec<String> = r.caps.iter().filter(|c| c.conf >= 0.5)
+        .map(|c| format!("{}({:.2}{})", c.cap, c.conf, if c.model_only { ", model-only" } else { "" })).collect();
     println!("{:<10} {:.2}  {}  [{}]", r.verdict.to_uppercase(), r.risk, p.display(),
         if det.is_empty() { "-".to_string() } else { det.join(" ") });
     let limit = if o.explain { usize::MAX } else { 4 };
