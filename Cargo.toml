@@ -1,0 +1,20 @@
+[package]
+name = "ratel"
+version = "0.1.0"
+edition = "2021"
+description = "Lightweight static capability scanner (anti-debug / anti-VM / obfuscation / packing / crypto / network) with tiny embedded GBDT models"
+license = "AGPL-3.0-or-later"
+
+[dependencies]
+goblin = { version = "0.10", default-features = false, features = ["std", "elf32", "elf64", "pe32", "pe64", "endian_fd"] }
+iced-x86 = { version = "1", default-features = false, features = ["decoder", "instr_info", "std"] }
+aho-corasick = "1"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+
+[profile.release]
+opt-level = "s"
+lto = true
+codegen-units = 1
+panic = "abort"
+strip = true

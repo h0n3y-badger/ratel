@@ -1,0 +1,571 @@
+{
+ "trained": "2026-11-01",
+ "params": {
+  "n_estimators": 90,
+  "max_depth": 3,
+  "learning_rate": 0.12,
+  "subsample": 0.8,
+  "min_samples_leaf": 12,
+  "random_state": 0
+ },
+ "target_fpr": 0.005,
+ "held_out_families": [
+  "antidbg.instrumentation",
+  "antidbg.trap",
+  "antidbg.win_exc",
+  "antidbg.win_ntqip",
+  "antivm.linux_artifacts",
+  "antivm.mac",
+  "antivm.resources",
+  "antivm.sandbox_identity",
+  "antivm.win_registry",
+  "crypto.stream",
+  "obf.cff",
+  "packer.array",
+  "packer.section"
+ ],
+ "counts": {
+  "synth": 300,
+  "real_train": 7809,
+  "real_holdout": 5278,
+  "games": 1378
+ },
+ "caps": {
+  "anti_debug": {
+   "threshold": 0.49999999999999994,
+   "heldout_family_recall": 0.21052631578947367,
+   "heldout_family_auc": 0.739720394736842,
+   "synthetic_neg_fpr": 0.07291666666666667,
+   "real_holdout_fpr": 0.0,
+   "real_holdout_weak_recall": null,
+   "n_train": 6290,
+   "n_pos": 21,
+   "n_test_pos": 38,
+   "games_flagged": 11,
+   "games_top": [
+    [
+     0.939,
+     "/home/h0n3y-badger/.var/app/com.valvesoftware.Steam/.local/share/Steam/steamapps/common/Tactical Assault VR/Tactical Assault VR.exe"
+    ],
+    [
+     0.939,
+     "/home/h0n3y-badger/.var/app/com.valvesoftware.Steam/.local/share/Steam/steamapps/common/Blade & Sorcery/BladeAndSorcery.exe"
+    ],
+    [
+     0.92,
+     "/home/h0n3y-badger/.var/app/com.valvesoftware.Steam/.local/share/Steam/steamapps/common/Half-Life 2/bin/shadercompile_dll.dll"
+    ],
+    [
+     0.842,
+     "/home/h0n3y-badger/.var/app/com.valvesoftware.Steam/.local/share/Steam/steamapps/common/Half-Life 2/bin/vtex.dll"
+    ],
+    [
+     0.775,
+     "/home/h0n3y-badger/.var/app/com.valvesoftware.Steam/.local/share/Steam/steamapps/common/Half-Life 2/bin/vvis_dll.dll"
+    ],
+    [
+     0.775,
+     "/home/h0n3y-badger/.var/app/com.valvesoftware.Steam/.local/share/Steam/steamapps/common/Half-Life 2/bin/MaterialSystem.dll"
+    ],
+    [
+     0.762,
+     "/home/h0n3y-badger/.var/app/com.valvesoftware.Steam/.local/share/Steam/steamapps/common/Half-Life 2/bin/vaudio_speex.dll"
+    ],
+    [
+     0.751,
+     "/home/h0n3y-badger/.var/app/com.valvesoftware.Steam/.local/share/Steam/steamapps/common/Half-Life 2/bin/chromehtml.dll"
+    ]
+   ],
+   "top_features": [
+    [
+     "exec_entropy_mean",
+     0.2772
+    ],
+    [
+     "xor_imm_rate",
+     0.1268
+    ],
+    [
+     "overlay_ratio",
+     0.1187
+    ],
+    [
+     "rand_str_ratio",
+     0.0832
+    ],
+    [
+     "entropy_max_win",
+     0.0526
+    ],
+    [
+     "printable_ratio",
+     0.0495
+    ],
+    [
+     "str_mean_len",
+     0.0449
+    ],
+    [
+     "exec_sections",
+     0.04
+    ],
+    [
+     "raw_syscalls",
+     0.0399
+    ],
+    [
+     "api_antidbg",
+     0.0251
+    ]
+   ],
+   "threshold_final": 0.5
+  },
+  "anti_vm": {
+   "threshold": 0.4499999999999999,
+   "heldout_family_recall": 0.26666666666666666,
+   "heldout_family_auc": 0.6744369369369368,
+   "synthetic_neg_fpr": 0.05405405405405406,
+   "real_holdout_fpr": 0.0,
+   "real_holdout_weak_recall": null,
+   "n_train": 6325,
+   "n_pos": 16,
+   "n_test_pos": 60,
+   "games_flagged": 2,
+   "games_top": [
+    [
+     0.607,
+     "/home/h0n3y-badger/.var/app/com.valvesoftware.Steam/.local/share/Steam/steamapps/common/Blade & Sorcery/BladeAndSorcery.exe"
+    ],
+    [
+     0.517,
+     "/home/h0n3y-badger/.var/app/com.valvesoftware.Steam/.local/share/Steam/steamapps/common/Tactical Assault VR/Tactical Assault VR.exe"
+    ],
+    [
+     0.016,
+     "/home/h0n3y-badger/.var/app/com.valvesoftware.Steam/.local/share/Steam/steamapps/common/The Outlast Trials/OPP/Binaries/Win64/EOSSDK-Win64-Shipping.dll"
+    ],
+    [
+     0.016,
+     "/home/h0n3y-badger/.var/app/com.valvesoftware.Steam/.local/share/Steam/steamapps/common/Palworld/Engine/Binaries/Win64/EOSSDK-Win64-Shipping.dll"
+    ],
+    [
+     0.013,
+     "/home/h0n3y-badger/.var/app/com.valvesoftware.Steam/.local/share/Steam/steamapps/common/EscapeTheBackrooms/EscapeTheBackrooms/Binaries/Win64/EOSSDK-Win64-Shipping.dll"
+    ],
+    [
+     0.006,
+     "/home/h0n3y-badger/.var/app/com.valvesoftware.Steam/.local/share/Steam/steamapps/common/Cyberpunk 2077/bin/x64/nvngx_dlssd.dll"
+    ],
+    [
+     0.005,
+     "/home/h0n3y-badger/.var/app/com.valvesoftware.Steam/.local/share/Steam/steamapps/common/Kerbal Space Program/KSPLauncher.x86_64"
+    ],
+    [
+     0.003,
+     "/home/h0n3y-badger/.var/app/com.valvesoftware.Steam/.local/share/Steam/steamapps/common/Kerbal Space Program/UnityPlayer.so"
+    ]
+   ],
+   "top_features": [
+    [
+     "xor_imm_rate",
+     0.605
+    ],
+    [
+     "exec_entropy_mean",
+     0.1237
+    ],
+    [
+     "xor_rate",
+     0.0656
+    ],
+    [
+     "overlay_ratio",
+     0.0526
+    ],
+    [
+     "str_vm_artifact",
+     0.0317
+    ],
+    [
+     "cpuid",
+     0.0192
+    ],
+    [
+     "rand_cmp_rate",
+     0.0146
+    ],
+    [
+     "api_sysinfo",
+     0.0138
+    ],
+    [
+     "call_reg_rate",
+     0.0122
+    ],
+    [
+     "printable_ratio",
+     0.0119
+    ]
+   ],
+   "threshold_final": 0.5
+  },
+  "obfuscation": {
+   "threshold": 0.06,
+   "heldout_family_recall": 0.34615384615384615,
+   "heldout_family_auc": 0.6126373626373627,
+   "synthetic_neg_fpr": 0.2619047619047619,
+   "real_holdout_fpr": 0.020517737296260788,
+   "real_holdout_weak_recall": null,
+   "n_train": 6299,
+   "n_pos": 12,
+   "n_test_pos": 26,
+   "games_flagged": 2,
+   "games_top": [
+    [
+     0.089,
+     "/home/h0n3y-badger/.var/app/com.valvesoftware.Steam/.local/share/Steam/steamapps/common/Kerbal Space Program/PluginData/KSPBurst@1.7.4.10-com.unity.burst@1.7.4/package/.Runtime/hostlin/llvm-lipo"
+    ],
+    [
+     0.065,
+     "/home/h0n3y-badger/.var/app/com.valvesoftware.Steam/.local/share/Steam/steamapps/common/The Outlast Trials/Engine/Plugins/VivoxCore/Source/ThirdParty/VivoxCoreLibrary/Windows/Release/x64/vivoxsdk.dll"
+    ],
+    [
+     0.055,
+     "/home/h0n3y-badger/.var/app/com.valvesoftware.Steam/.local/share/Steam/steamapps/common/Tactical Assault VR/Tactical Assault VR.exe"
+    ],
+    [
+     0.035,
+     "/home/h0n3y-badger/.var/app/com.valvesoftware.Steam/.local/share/Steam/steamapps/common/Blade & Sorcery/BladeAndSorcery.exe"
+    ],
+    [
+     0.007,
+     "/home/h0n3y-badger/.var/app/com.valvesoftware.Steam/.local/share/Steam/steamapps/common/GarrysMod/bin/bass.dll"
+    ],
+    [
+     0.003,
+     "/home/h0n3y-badger/.var/app/com.valvesoftware.Steam/.local/share/Steam/steamapps/common/Tactical Assault VR/UnityPlayer.dll"
+    ],
+    [
+     0.002,
+     "/home/h0n3y-badger/.var/app/com.valvesoftware.Steam/.local/share/Steam/steamapps/common/Palworld/Pal/Binaries/Win64/boost_system-vc142-mt-x64-1_70.dll"
+    ],
+    [
+     0.002,
+     "/home/h0n3y-badger/.var/app/com.valvesoftware.Steam/.local/share/Steam/steamapps/common/Palworld/Pal/Binaries/Win64/boost_atomic-vc142-mt-x64-1_70.dll"
+    ]
+   ],
+   "top_features": [
+    [
+     "xor_imm_rate",
+     0.422
+    ],
+    [
+     "str_dbg_tools",
+     0.1051
+    ],
+    [
+     "exec_entropy_mean",
+     0.0958
+    ],
+    [
+     "data_entropy_max",
+     0.0731
+    ],
+    [
+     "exec_entropy_max",
+     0.0672
+    ],
+    [
+     "rand_cmp_rate",
+     0.0414
+    ],
+    [
+     "xor_rate",
+     0.0344
+    ],
+    [
+     "call_reg_rate",
+     0.0297
+    ],
+    [
+     "entropy_max_win",
+     0.027
+    ],
+    [
+     "str_mean_len",
+     0.0215
+    ]
+   ],
+   "threshold_final": 0.5
+  },
+  "packed": {
+   "threshold": 0.5,
+   "heldout_family_recall": 0.0,
+   "heldout_family_auc": 0.8982954545454545,
+   "synthetic_neg_fpr": 0.0,
+   "real_holdout_fpr": 0.0,
+   "real_holdout_weak_recall": null,
+   "n_train": 6337,
+   "n_pos": 12,
+   "n_test_pos": 24,
+   "games_flagged": 2,
+   "games_top": [
+    [
+     1.0,
+     "/home/h0n3y-badger/.var/app/com.valvesoftware.Steam/.local/share/Steam/steamapps/common/EscapeTheBackrooms/Engine/Extras/Redist/en-us/UE4PrereqSetup_x64.exe"
+    ],
+    [
+     0.993,
+     "/home/h0n3y-badger/.var/app/com.valvesoftware.Steam/.local/share/Steam/steamapps/common/Half-Life 2/bin/libharfbuzz-0.dll"
+    ],
+    [
+     0.012,
+     "/home/h0n3y-badger/.var/app/com.valvesoftware.Steam/.local/share/Steam/steamapps/common/tModLoader/Libraries/Native/Windows/FNA3D.dll"
+    ],
+    [
+     0.0,
+     "/home/h0n3y-badger/.var/app/com.valvesoftware.Steam/.local/share/Steam/steamapps/common/GarrysMod/bin/bass.dll"
+    ],
+    [
+     0.0,
+     "/home/h0n3y-badger/.var/app/com.valvesoftware.Steam/.local/share/Steam/steamapps/common/tModLoader/Libraries/microsoft.visualstudio.setup.configuration.interop/3.2.2146/lib/netstandard2.1/Microsoft.VisualStudio.Setup.Configuration.Interop.dll"
+    ],
+    [
+     0.0,
+     "/home/h0n3y-badger/.var/app/com.valvesoftware.Steam/.local/share/Steam/steamapps/common/tModLoader/Libraries/microsoft.codeanalysis.workspaces.msbuild/4.12.0/lib/net8.0/zh-Hant/Microsoft.CodeAnalysis.Workspaces.MSBuild.resources.dll"
+    ],
+    [
+     0.0,
+     "/home/h0n3y-badger/.var/app/com.valvesoftware.Steam/.local/share/Steam/steamapps/common/tModLoader/Libraries/microsoft.codeanalysis.workspaces.msbuild/4.12.0/lib/net8.0/zh-Hans/Microsoft.CodeAnalysis.Workspaces.MSBuild.resources.dll"
+    ],
+    [
+     0.0,
+     "/home/h0n3y-badger/.var/app/com.valvesoftware.Steam/.local/share/Steam/steamapps/common/tModLoader/Libraries/microsoft.codeanalysis.workspaces.msbuild/4.12.0/lib/net8.0/tr/Microsoft.CodeAnalysis.Workspaces.MSBuild.resources.dll"
+    ]
+   ],
+   "top_features": [
+    [
+     "overlay_entropy",
+     0.9682
+    ],
+    [
+     "str_crypto",
+     0.0139
+    ],
+    [
+     "invalid_ratio",
+     0.0078
+    ],
+    [
+     "cc_sha256",
+     0.0037
+    ],
+    [
+     "rsrc_entropy",
+     0.0028
+    ],
+    [
+     "api_timing",
+     0.0025
+    ],
+    [
+     "overlay_ratio",
+     0.0004
+    ],
+    [
+     "b64_strs",
+     0.0003
+    ],
+    [
+     "frac_high_win",
+     0.0002
+    ],
+    [
+     "str_net",
+     0.0001
+    ]
+   ],
+   "threshold_final": 0.5
+  },
+  "crypto": {
+   "threshold": 0.37999999999999995,
+   "heldout_family_recall": 0.56,
+   "heldout_family_auc": 0.8205504587155963,
+   "synthetic_neg_fpr": 0.03669724770642202,
+   "real_holdout_fpr": 0.009072580645161291,
+   "real_holdout_weak_recall": 0.9854545454545455,
+   "n_train": 6327,
+   "n_pos": 196,
+   "n_test_pos": 25,
+   "games_flagged": 607,
+   "games_top": [
+    [
+     1.0,
+     "/home/h0n3y-badger/.var/app/com.valvesoftware.Steam/.local/share/Steam/steamapps/common/The Outlast Trials/Engine/Binaries/ThirdParty/CEF3/Win64/libcef.dll"
+    ],
+    [
+     1.0,
+     "/home/h0n3y-badger/.var/app/com.valvesoftware.Steam/.local/share/Steam/steamapps/common/Tactical Assault VR/UnityPlayer.dll"
+    ],
+    [
+     1.0,
+     "/home/h0n3y-badger/.var/app/com.valvesoftware.Steam/.local/share/Steam/steamapps/common/Cyberpunk 2077/bin/x64/CrashReporter/7za.exe"
+    ],
+    [
+     1.0,
+     "/home/h0n3y-badger/.var/app/com.valvesoftware.Steam/.local/share/Steam/steamapps/common/tModLoader/LaunchUtils/busybox64.exe"
+    ],
+    [
+     1.0,
+     "/home/h0n3y-badger/.var/app/com.valvesoftware.Steam/.local/share/Steam/steamapps/common/Cyberpunk 2077/bin/x64/REDGalaxy64.dll"
+    ],
+    [
+     1.0,
+     "/home/h0n3y-badger/.var/app/com.valvesoftware.Steam/.local/share/Steam/steamapps/common/Blade & Sorcery/UnityPlayer.dll"
+    ],
+    [
+     1.0,
+     "/home/h0n3y-badger/.var/app/com.valvesoftware.Steam/.local/share/Steam/steamapps/common/Blade & Sorcery/BladeAndSorcery_Data/Plugins/x86_64/OVRPlugin.dll"
+    ],
+    [
+     1.0,
+     "/home/h0n3y-badger/.var/app/com.valvesoftware.Steam/.local/share/Steam/steamapps/common/The Outlast Trials/OPP/Binaries/Win64/EOSSDK-Win64-Shipping.dll"
+    ]
+   ],
+   "top_features": [
+    [
+     "entropy_max_win",
+     0.4553
+    ],
+    [
+     "imm_tea",
+     0.1083
+    ],
+    [
+     "str_crypto",
+     0.0862
+    ],
+    [
+     "xor_rate",
+     0.079
+    ],
+    [
+     "cc_rsa_oid",
+     0.0557
+    ],
+    [
+     "cc_md5",
+     0.0361
+    ],
+    [
+     "cc_sha256",
+     0.0337
+    ],
+    [
+     "api_crypto",
+     0.0271
+    ],
+    [
+     "rot_rate",
+     0.0266
+    ],
+    [
+     "data_entropy_max",
+     0.0117
+    ]
+   ],
+   "threshold_final": 0.5
+  },
+  "network": {
+   "threshold": 0.05,
+   "heldout_family_recall": 0.8333333333333334,
+   "heldout_family_auc": 0.9043715846994536,
+   "synthetic_neg_fpr": 0.02459016393442623,
+   "real_holdout_fpr": 0.0,
+   "real_holdout_weak_recall": 1.0,
+   "n_train": 2355,
+   "n_pos": 170,
+   "n_test_pos": 12,
+   "games_flagged": 61,
+   "games_top": [
+    [
+     1.0,
+     "/home/h0n3y-badger/.var/app/com.valvesoftware.Steam/.local/share/Steam/steamapps/common/tModLoader/LaunchUtils/busybox64.exe"
+    ],
+    [
+     1.0,
+     "/home/h0n3y-badger/.var/app/com.valvesoftware.Steam/.local/share/Steam/steamapps/common/The Outlast Trials/start_protected_game.exe"
+    ],
+    [
+     1.0,
+     "/home/h0n3y-badger/.var/app/com.valvesoftware.Steam/.local/share/Steam/steamapps/common/The Outlast Trials/OPP/Binaries/Win64/EOSSDK-Win64-Shipping.dll"
+    ],
+    [
+     1.0,
+     "/home/h0n3y-badger/.var/app/com.valvesoftware.Steam/.local/share/Steam/steamapps/common/The Outlast Trials/Engine/Plugins/VivoxCore/Source/ThirdParty/VivoxCoreLibrary/Windows/Release/x64/vivoxsdk.dll"
+    ],
+    [
+     1.0,
+     "/home/h0n3y-badger/.var/app/com.valvesoftware.Steam/.local/share/Steam/steamapps/common/The Outlast Trials/Engine/Binaries/Win64/CrashReportClient.exe"
+    ],
+    [
+     1.0,
+     "/home/h0n3y-badger/.var/app/com.valvesoftware.Steam/.local/share/Steam/steamapps/common/The Outlast Trials/Engine/Binaries/ThirdParty/NVIDIA/GeForceNOW/Win64/GfnRuntimeSdk.dll"
+    ],
+    [
+     1.0,
+     "/home/h0n3y-badger/.var/app/com.valvesoftware.Steam/.local/share/Steam/steamapps/common/The Outlast Trials/Engine/Binaries/ThirdParty/CEF3/Win64/libcef.dll"
+    ],
+    [
+     1.0,
+     "/home/h0n3y-badger/.var/app/com.valvesoftware.Steam/.local/share/Steam/steamapps/common/The Outlast Trials/EasyAntiCheat/EasyAntiCheat_EOS_Setup.exe"
+    ]
+   ],
+   "top_features": [
+    [
+     "api_net",
+     1.0
+    ],
+    [
+     "entropy",
+     0.0
+    ],
+    [
+     "str_mean_len",
+     0.0
+    ],
+    [
+     "overlay_entropy",
+     0.0
+    ],
+    [
+     "rot_rate",
+     0.0
+    ],
+    [
+     "printable_ratio",
+     0.0
+    ],
+    [
+     "xor_rate",
+     0.0
+    ],
+    [
+     "xor_imm_rate",
+     0.0
+    ],
+    [
+     "wx_sections",
+     0.0
+    ],
+    [
+     "vsize_gt_raw",
+     0.0
+    ]
+   ],
+   "threshold_final": 0.5
+  }
+ },
+ "model_bytes": 250333,
+ "model_sha256": "93f565f50fcd28ac96c8bb35896a0656550c6a41ab3e1df3a3cb559c9acbb82e"
+}
