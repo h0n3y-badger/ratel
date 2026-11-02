@@ -560,7 +560,7 @@ fn write_resp(s: &mut Conn, r: Resp, secure: bool) {
     let mut h = format!("HTTP/1.1 {} {}\r\nContent-Type: {}\r\nContent-Length: {}\r\nConnection: close\r\n", r.status,
         reason(r.status), r.ctype, r.body.len());
     h += "Content-Security-Policy: default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'self'; form-action 'self'; frame-ancestors 'none'; base-uri 'none'\r\n";
-    h += "X-Content-Type-Options: nosniff\r\nX-Frame-Options: DENY\r\nReferrer-Policy: no-referrer\r\n";
+    h += "X-Content-Type-Options: nosniff\r\nX-Frame-Options: DENY\r\nReferrer-Policy: same-origin\r\n";
     h += "Cross-Origin-Opener-Policy: same-origin\r\nCross-Origin-Resource-Policy: same-origin\r\n";
     h += "Permissions-Policy: camera=(), microphone=(), geolocation=(), usb=(), payment=()\r\nCache-Control: no-store\r\n";
     if secure {
@@ -623,7 +623,9 @@ fn route(sh: &Shared, r: &Req) -> Result<Resp, u16> {
         return Err(421);
     }
     if r.method == "POST" {
-        // Same-origin POSTs only (browsers always send Origin on POST).
+        // Same-origin POSTs only. Browsers send Origin on every POST; with our
+        // Referrer-Policy: same-origin it is the real origin for our own pages and
+        // "null" for any other site (and for no-referrer pages), which is rejected.
         let origin = r.headers.get("origin").ok_or(403u16)?;
         let want = format!("{}://{host}", if sh.cfg.secure_cookie { "https" } else { "http" });
         if !origin.eq_ignore_ascii_case(&want) {

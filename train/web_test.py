@@ -126,6 +126,8 @@ s, h, b = req("POST", "/api/ack", body=body, headers={**auth, "Origin": "http://
 check("ack without CSRF -> 403", s == 403)
 s, h, b = req("POST", "/api/ack", body=body, headers={**auth, "Origin": "http://evil.example", "X-Ratel-CSRF": csrf})
 check("ack cross-origin -> 403", s == 403)
+s, h, b = req("POST", "/api/ack", body=body, headers={**auth, "Origin": "null", "X-Ratel-CSRF": csrf})
+check("ack with Origin: null -> 403", s == 403)
 s, h, b = req("POST", "/api/ack", body=body, headers={**auth, "Origin": "http://" + H, "X-Ratel-CSRF": csrf, "Content-Type": "application/json"})
 check("ack with session + CSRF + Origin -> ok", s == 200 and json.loads(b).get("ok") is True, f"{s} {b[:100]}")
 fb = os.path.join(state, "feedback.d", "web.jsonl")
