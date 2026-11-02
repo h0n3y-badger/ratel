@@ -15,6 +15,7 @@ pub mod engine;
 pub mod events;
 pub mod notify;
 pub mod procs;
+pub mod respond;
 
 use engine::{Alert, Config, Engine, State};
 use events::Event;
@@ -55,6 +56,16 @@ usage: ratel watch [opts]
   --loopback           include the loopback interface (testing in a network namespace)
   --resolver IP        also trust DNS answers from this server (repeatable; /etc/resolv.conf
                        servers and the big public resolvers are trusted already)
+  --clamav-db DIR      ClamAV databases for the path scans and networked executables
+                       (default /var/lib/clamav if present, kept current by freshclam)
+  --no-clamav          don't use ClamAV signatures
+  --quarantine MODE    off | signatures (default): move files matching a ClamAV signature
+                       into <state>/quarantine (never package-owned or allowlisted files)
+  --contain MODE       off | signatures (default: freeze processes running a file that
+                       matches a signature) | high (also the processes behind high
+                       network/process alerts)
+  --contain-never EXE  never freeze processes of this executable (repeatable; sshd,
+                       tailscaled, init, dockerd, prosody... are protected already)
 ";
 
 #[derive(Default)]
@@ -80,6 +91,11 @@ struct WOpts {
     loopback: bool,
     scan_paths: Vec<String>,
     resolvers: Vec<IpAddr>,
+    clamav_db: Option<String>,
+    no_clamav: bool,
+    quarantine: String,
+    contain: String,
+    contain_never: Vec<String>,
     scan_every: f64,
     digest_hour: i32,
     status: Option<String>,
@@ -158,6 +174,11 @@ fn parse(args: &[String]) -> Result<WOpts, String> {
             }
             "--status" => o.status = Some(val(&mut i)?),
             "--scan-path" => o.scan_paths.push(val(&mut i)?),
+            "--clamav-db" => o.clamav_db = Some(val(&mut i)?),
+            "--no-clamav" => o.no_clamav = true,
+            "--quarantine" => o.quarantine = val(&mut i)?,
+            "--contain" => o.contain = val(&mut i)?,
+            "--contain-never" => o.contain_never.push(val(&mut i)?),
             "--resolver" => {
                 let v = val(&mut i)?;
                 o.resolvers.push(v.parse().map_err(|_| format!("bad resolver address {v}"))?);
@@ -525,6 +546,26 @@ fn live(o: &WOpts, cfg: Config, model: crate::model::NetModel) {
     });
     let sock_ok = std::path::Path::new(&std::env::var("NOTIFY_SOCKET").unwrap_or_else(|_| "/run/prosody/notify.sock".into())).exists();
     let mut out = Out { json: o.json, log, notifier: notify::Notifier::new(!o.no_notify && (root || sock_ok), &o.notify_min) };
+    let response = std::sync::Arc::new(respond::Response::new(&o.quarantine, &o.contain, &o.contain_never, &state_dir)
+        .unwrap_or_else(|e| {
+            eprintln!("ratel: {e}");
+            std::process::exit(2)
+        }));
+    // ClamAV signatures, shared by the scan threads; swapped when freshclam updates them
+    type ClamSlot = std::sync::Arc<std::sync::Mutex<Option<std::sync::Arc<crate::clamav::Db>>>>;
+    let clam: ClamSlot = Default::default();
+    let mut clam_problem = None;
+    if !o.no_clamav {
+        let dir = o.clamav_db.clone().unwrap_or_else(|| crate::clamav::DEFAULT_DIR.into());
+        if o.clamav_db.is_some() || std::path::Path::new(&dir).is_dir() {
+            match crate::clamav::Db::load(std::path::Path::new(&dir), false) {
+                Ok(db) => *clam.lock().unwrap() = Some(std::sync::Arc::new(db)),
+                Err(e) => clam_problem = Some(e),
+            }
+        }
+    }
+    let clam_now = |c: &ClamSlot| c.lock().unwrap_or_else(|e| e.into_inner()).clone();
+    let mut clam_check = Instant::now();
     let (loaded, state_problem) = load_state_checked(&state_dir);
     let mut eng = Engine::new(cfg, loaded, if model.units.is_empty() { None } else { Some(model) });
     let mut rec = o.record.as_ref().map(|p| std::io::BufWriter::new(std::fs::File::create(p).unwrap_or_else(|e| {
@@ -574,23 +615,50 @@ fn live(o: &WOpts, cfg: Config, model: crate::model::NetModel) {
     let mut initial: Option<HashSet<u64>> = None;
     // static scans of newly networked executables, off the main loop
     // (entity, file to read, path for package provenance)
-    let (scan_tx, scan_rx) = std::sync::mpsc::channel::<(String, std::path::PathBuf, std::path::PathBuf)>();
+    // (entity, pid, its start time, file to read, path for package provenance)
+    let (scan_tx, scan_rx) = std::sync::mpsc::channel::<(String, u32, Option<u64>, std::path::PathBuf, std::path::PathBuf)>();
     let (res_tx, res_rx) = std::sync::mpsc::channel::<(String, f32, String)>();
+    let (file_tx, file_rx) = std::sync::mpsc::channel::<Alert>();
     let mut scanned: HashSet<String> = HashSet::new();
     if !o.no_scan {
+        let (clam, response, alert_tx) = (clam.clone(), response.clone(), file_tx.clone());
         std::thread::spawn(move || {
             let m = crate::model::Model::load(crate::model::EMBEDDED).ok();
             let kind = crate::trust::detect_pkg_kind();
-            for (ent, p, exe) in scan_rx {
+            // act once per (process, content): quarantining unlinks the file, which changes
+            // its ctime and so brings it back here as "new"
+            let mut acted: HashSet<(u32, [u8; 32])> = HashSet::new();
+            for (ent, pid, start, p, exe) in scan_rx {
                 let Some(d) = crate::read_candidate_heap(&p, 128 << 20) else { continue };
                 let Some(m) = m.as_ref() else { continue };
                 let mut r = crate::report::assess(&crate::features::analyze(&d), m);
+                let h = crate::trust::hash(&d, kind);
                 {
-                    let h = crate::trust::hash(&d, kind);
                     let wanted: HashSet<std::path::PathBuf> = [exe.clone()].into_iter().collect();
                     if let Ok(t) = crate::trust::Trust::load(kind, &crate::trust::default_allowlists().into_iter().map(|f| (f, false)).collect::<Vec<_>>(), &wanted) {
                         crate::report::apply_origin(&mut r, t.origin(&exe, &h), true);
                     }
+                }
+                let sigs = clam.lock().unwrap_or_else(|e| e.into_inner()).clone().map(|db| db.scan(&d)).unwrap_or_default();
+                crate::report::apply_signatures(&mut r, sigs);
+                if !r.signatures.is_empty() && r.verdict == "malware" && acted.insert((pid, h.sha256)) {
+                    // a running program matches known malware: freeze it, then quarantine the file
+                    let sha = crate::trust::hex(&h.sha256);
+                    let mut ev: Vec<String> = r.signatures.iter().map(|s| format!("ClamAV signature {}", crate::safety::safe(s))).collect();
+                    if response.contain_sig {
+                        ev.push(response.contain(pid, start, &format!("runs malware ({})", r.signatures.join(", "))));
+                    }
+                    use std::os::unix::fs::MetadataExt;
+                    let same = std::fs::metadata(&p).ok().zip(std::fs::symlink_metadata(&exe).ok())
+                        .is_some_and(|(a, b)| a.dev() == b.dev() && a.ino() == b.ino());
+                    ev.push(if same { response.quarantine(&exe, &sha, &r.origin, &r.signatures) }
+                        else { "not quarantined: the file isn't reachable at its path from here (deleted, or another mount namespace)".into() });
+                    ev.push(format!("sha256 {sha}"));
+                    let _ = alert_tx.send(Alert {
+                        t: now(), severity: "high", kind: "process", entity: ent.clone(), pid, dest: String::new(), score: 1.0,
+                        title: format!("running malware: {} (ClamAV: {})", ent, crate::safety::safe(&r.signatures.join(", "))),
+                        evidence: ev, incident: String::new(), context: serde_json::Value::Null, capped: false,
+                    });
                 }
                 let det: Vec<&str> = r.caps.iter().filter(|c| c.conf >= 0.5 && c.excused_by.is_none()).map(|c| c.cap).collect();
                 let risk = if r.verdict == "allowed" { 0.0 } else { r.risk as f32 };
@@ -600,18 +668,55 @@ fn live(o: &WOpts, cfg: Config, model: crate::model::NetModel) {
     }
 
     // periodic static scans (one low-priority thread, one file at a time)
-    let (file_tx, file_rx) = std::sync::mpsc::channel::<Alert>();
     if !o.scan_paths.is_empty() {
         let paths: Vec<std::path::PathBuf> = o.scan_paths.iter().map(std::path::PathBuf::from).collect();
         let every = Duration::from_secs_f64(o.scan_every * 3600.0);
+        let (clam, response) = (clam.clone(), response.clone());
         std::thread::spawn(move || {
             // SAFETY: lowers the priority of this thread only (Linux: per-thread nice).
             unsafe { libc::setpriority(libc::PRIO_PROCESS, libc::gettid() as libc::id_t, 15) };
             let Ok(m) = crate::model::Model::load(crate::model::EMBEDDED) else { return };
-            let cfg = crate::ScanCfg { heap: true, jobs: 1, max: 64 << 20, allow: vec![], integrity: true, pkg_trust: true };
             loop {
-                let _ = crate::scan_files(&paths, &cfg, &m, |p, r, sha| {
+                let db = clam.lock().unwrap_or_else(|e| e.into_inner()).clone();
+                let cfg = crate::ScanCfg { heap: true, jobs: 1, max: 64 << 20, allow: vec![], integrity: true, pkg_trust: true, clam: db };
+                let _ = crate::scan_files(&paths, &cfg, &m, |p, r, seen| {
+                    let sha = seen.sha256.clone();
                     let modified = matches!(r.origin, Some(crate::trust::Origin::Modified { .. }));
+                    if !r.signatures.is_empty() && r.verdict == "malware" {
+                        let sha = sha.unwrap_or_default();
+                        let mut ev: Vec<String> = r.signatures.iter().map(|s| format!("ClamAV signature {}", crate::safety::safe(s))).collect();
+                        if let Some(o) = &r.origin {
+                            ev.push(format!("origin: {}", serde_json::to_string(o).unwrap_or_default()));
+                        }
+                        // act on the file that was read (its inode, its real path), never on
+                        // whatever the path names by now
+                        if response.contain_sig && seen.ino != 0 {
+                            for pid in respond::Response::running(seen.dev, seen.ino) {
+                                ev.push(response.contain(pid, None, &format!("runs malware ({})", r.signatures.join(", "))));
+                            }
+                        }
+                        ev.push(match &seen.path {
+                            Some(real) => response.quarantine(real, &sha, &r.origin, &r.signatures),
+                            None => "not quarantined: the file's real location is unknown".into(),
+                        });
+                        ev.push(format!("sha256 {sha}"));
+                        let _ = file_tx.send(Alert {
+                            t: now(), severity: "high", kind: "file", entity: crate::safety::safe_path(p), pid: 0, dest: String::new(), score: 1.0,
+                            title: format!("malware (ClamAV: {}): {}", crate::safety::safe(&r.signatures.join(", ")), crate::safety::safe_path(p)),
+                            evidence: ev, incident: String::new(), context: serde_json::Value::Null, capped: false,
+                        });
+                        return;
+                    }
+                    if r.sig_limited && r.signatures.is_empty() {
+                        // crafted to exhaust the matcher before a real signature, or just huge
+                        let _ = file_tx.send(Alert {
+                            t: now(), severity: "medium", kind: "file", entity: crate::safety::safe_path(p), pid: 0, dest: String::new(), score: 0.5,
+                            title: format!("file could not be fully checked against ClamAV signatures: {}", crate::safety::safe_path(p)),
+                            evidence: vec!["a matching budget ran out (many near-matches, or too many PE sections)".into(),
+                                format!("sha256 {}", sha.clone().unwrap_or_default())],
+                            incident: String::new(), context: serde_json::Value::Null, capped: false,
+                        });
+                    }
                     if r.verdict != "high" && !modified {
                         return;
                     }
@@ -644,6 +749,11 @@ fn live(o: &WOpts, cfg: Config, model: crate::model::NetModel) {
     let mut last_status = Instant::now() - Duration::from_secs(3600);
     let mut last_drop_check = Instant::now();
     let mut last_health: HashMap<&'static str, f64> = HashMap::new();
+    if let Some(problem) = &clam_problem {
+        // e.g. databases writable by someone other than root/clamav: refuse them, loudly
+        let a = health_alert("clamav", "medium", "ClamAV signatures not loaded", vec![crate::safety::safe(problem)]);
+        handle_alert(a, &eng, &mut sink, &mut out, &mut health);
+    }
     if let Some(problem) = &state_problem {
         let a = health_alert("state", "high", "ratel state was not trusted (possible tampering)", vec![problem.clone()]);
         handle_alert(a, &eng, &mut sink, &mut out, &mut health);
@@ -900,7 +1010,7 @@ fn live(o: &WOpts, cfg: Config, model: crate::model::NetModel) {
                             scanned.clear();
                         }
                         if scanned.insert(key) {
-                            let _ = scan_tx.send((ent.clone(), read, origin_path));
+                            let _ = scan_tx.send((ent.clone(), pid, crate::contain::start_time(pid), read, origin_path));
                         }
                     }
                 }
@@ -961,7 +1071,16 @@ fn live(o: &WOpts, cfg: Config, model: crate::model::NetModel) {
             emit(&mut eng, Event::Exe { t, ent, risk, detail }, &mut sink);
         }
         eng.tick(t);
-        for a in eng.drain_alerts() {
+        for mut a in eng.drain_alerts() {
+            // `contain = high`: freeze the process behind a high behaviour alert
+            if response.contain_high && a.severity == "high" && a.pid != 0 && matches!(a.kind, "process" | "exfil" | "beacon") {
+                // the alert's pid may be minutes old: only if it is still that program
+                let line = match procs.list.iter().find(|x| x.pid == a.pid) {
+                    Some(x) if x.ent == a.entity => response.contain(a.pid, crate::contain::start_time(a.pid), &a.title),
+                    _ => format!("process not frozen: pid {} is no longer {}", a.pid, a.entity),
+                };
+                a.evidence.push(line);
+            }
             handle_alert(a, &eng, &mut sink, &mut out, &mut health);
         }
         while let Ok(a) = file_rx.try_recv() {
@@ -974,6 +1093,20 @@ fn live(o: &WOpts, cfg: Config, model: crate::model::NetModel) {
         out.notifier.flush(false);
         // ---- health, status, feedback, digest (every 30 s)
         if last_status.elapsed() >= Duration::from_secs(30) {
+            if let Some(db) = clam_now(&clam) {
+                // the Windows signatures are big: keep them only while PE files keep coming
+                db.release_idle_pe(Duration::from_secs(600));
+                if clam_check.elapsed() >= Duration::from_secs(900) {
+                    clam_check = Instant::now();
+                    if db.changed() {
+                        let slot = clam.clone();
+                        std::thread::spawn(move || match db.reload() {
+                            Ok(n) => *slot.lock().unwrap_or_else(|e| e.into_inner()) = Some(std::sync::Arc::new(n)),
+                            Err(e) => eprintln!("ratel: ClamAV reload failed, keeping the loaded signatures: {e}"),
+                        });
+                    }
+                }
+            }
             last_status = Instant::now();
             if let Some(c) = &cap {
                 let (pk, dr) = incidents::packet_stats(c.raw_fd());
@@ -1062,8 +1195,11 @@ fn live(o: &WOpts, cfg: Config, model: crate::model::NetModel) {
                     let _ = std::fs::rename(&tmp, &lp);
                 }
                 let open = sink.store.as_ref().map_or(0, |s| s.open_count());
+                let (quarantined, contained) = response.counts();
                 incidents::write_status(sp, &health, &eng, serde_json::json!({"open_incidents": open, "suppressions": eng.cfg.suppress.len(),
-                    "capture": cap.is_some(), "root": root, "exe_sha256": me_sha, "dns_unsolicited": dnsq.unsolicited}));
+                    "capture": cap.is_some(), "root": root, "exe_sha256": me_sha, "dns_unsolicited": dnsq.unsolicited,
+                    "clamav": clam_now(&clam).map(|d| d.version.clone()), "quarantined": quarantined, "contained": contained,
+                    "response": {"quarantine": response.quarantine, "contain": if response.contain_high { "high" } else if response.contain_sig { "signatures" } else { "off" }}}));
             }
         }
         if last_save.elapsed() >= Duration::from_secs(600) {

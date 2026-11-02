@@ -91,13 +91,28 @@ threading.Thread(target=notify_server, daemon=True).start()
 # a folder for the periodic static scan, with one synthetic sample that scores high
 SCAN = "/tmp/ratel-sbx-scan"
 os.makedirs(SCAN, exist_ok=True)
-import shutil; shutil.copy(os.path.join(ROOT, "data/synth/bin/s1_000066"), SCAN + "/dropper")
+import shutil, hashlib; shutil.copy(os.path.join(ROOT, "data/synth/bin/s1_000066"), SCAN + "/dropper")
+# ---- signature response: a test signature database (no real malware involved).
+# The EICAR test file goes into the scanned folder; a copy of the Python binary is
+# "known malware" by its hash, and runs beaconing to the C2 address.
+EICAR = rb"X5O!P%@AP[4\PZX54(P^)7CC)7}$EICAR-STANDARD-ANTIVIRUS-TEST-FILE!$H+H*"
+for f in os.listdir(SCAN):
+    if f != "dropper": os.remove(os.path.join(SCAN, f))
+with open(SCAN + "/eicar.com", "wb") as fh: fh.write(EICAR)
+BIN = "/tmp/ratel-sbx-bin"; shutil.rmtree(BIN, ignore_errors=True); os.makedirs(BIN)
+PYX = BIN + "/pyx"; shutil.copy(os.path.realpath(sys.executable), PYX)
+with open(PYX, "ab") as fh: fh.write(b"\0ratel-test-sample")  # its own hash: not the interpreter running this test
+SIGS = "/tmp/ratel-sbx-sigs"; shutil.rmtree(SIGS, ignore_errors=True); os.makedirs(SIGS); os.chmod(SIGS, 0o755)
+pyx = open(PYX, "rb").read()
+with open(SIGS + "/test.hdb", "w") as fh: fh.write(f"{hashlib.md5(EICAR).hexdigest()}:{len(EICAR)}:Eicar-Test-Signature\n")
+with open(SIGS + "/test.hsb", "w") as fh: fh.write(f"{hashlib.sha256(pyx).hexdigest()}:{len(pyx)}:Ratel.Test.RunningMalware\n")
+for f in os.listdir(SIGS): os.chmod(os.path.join(SIGS, f), 0o644)
 
 state = "/tmp/ratel-sbx-state"
 os.makedirs(state, exist_ok=True)
 shutil.rmtree(state, ignore_errors=True); os.makedirs(state)
 w = subprocess.Popen([RATEL, "watch", "--loopback", "--resolver", DNS, "--learn-hours", "0", "--json", "--duration", "200",
-                      "--state", state, "--interval", "1", "--no-scan-exes", "--record", "/tmp/ratel-sbx-events.jsonl",
+                      "--state", state, "--interval", "1", "--clamav-db", SIGS, "--record", "/tmp/ratel-sbx-events.jsonl",
                       "--log", "/tmp/ratel-sbx-alerts.jsonl", "--scan-path", SCAN, "--scan-every", "1"],
                      stdout=subprocess.PIPE, text=True, env=dict(os.environ, NOTIFY_SOCKET=NOTIFY))
 time.sleep(3)
@@ -108,6 +123,8 @@ for i in range(5):
     s = socket.create_connection((WEB, 443)); s.sendall(b"GET / HTTP/1.1\r\n\r\n")
     while s.recv(65536): pass
     s.close()
+# ---- "known malware" running and talking to the C2 host
+mal = subprocess.Popen([PYX, "-c", "import socket,time\nfor i in range(40):\n    try:\n        s=socket.create_connection(('%s',4444),timeout=2,source_address=('%s',0)); s.sendall(b'x'); time.sleep(3); s.close()\n    except OSError: pass\n    time.sleep(1)" % (C2, ME)])
 # ---- forged DNS answer (no query was sent) claiming the exfil sink is github.com:
 # the monitor must not believe it (the upload must still be to "an address no DNS lookup returned")
 fake = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
@@ -188,6 +205,20 @@ print(f"--- {len(received)} XMPP message(s) via the notify socket; first one:")
 print(received[0] if received else "(none)")
 kinds = {a["kind"] for a in alerts}
 want = {"exfil", "dns", "process", "icmp", "scan", "beacon", "file", "health"}
+# signature response: EICAR quarantined from the scan folder; the running "malware"
+# frozen (SIGSTOP here: no cgroup delegation in a user namespace) and quarantined
+fa = [a for a in alerts if a["kind"] == "file" and "ClamAV: Eicar" in a["title"]]
+ra = [a for a in alerts if "running malware" in a["title"]]
+eicar_q = bool(fa) and any(e.startswith("quarantined as") for e in fa[0]["evidence"]) and not os.path.exists(SCAN + "/eicar.com")
+mal_frozen = bool(ra) and any(e.startswith("process tree frozen") for e in ra[0]["evidence"])
+mal_q = bool(ra) and any(e.startswith("quarantined as") for e in ra[0]["evidence"]) and not os.path.exists(PYX)
+print("signature response: EICAR quarantined", eicar_q, "| running malware frozen", mal_frozen, "and quarantined", mal_q)
+for a in fa[:1] + ra[:1]:
+    print("   ", a["title"]); [print("       -", e) for e in a["evidence"]]
+try: mal.kill()
+except Exception: pass
+contained = subprocess.run([RATEL, "contain", "list", "--state", state + "/contained.json"], capture_output=True, text=True)
+print("--- ratel contain list:\n" + contained.stdout + contained.stderr)
 health = [a for a in alerts if a["kind"] == "health"]
 print("--- health alerts:", [(a["title"], a["evidence"][:2]) for a in health])
 announced = any("suppression" in a["title"] and any("/usr/bin/planted" in e for e in a["evidence"]) for a in health)
@@ -198,4 +229,4 @@ spoof_ok = bool(exf_alert) and "github" not in exf_alert[0]["dest"] and any("no 
 print("forged DNS answer ignored:", spoof_ok, exf_alert[0]["dest"] if exf_alert else None)
 bad = [a for a in alerts if WEB in a["dest"] or "example.org" in a["dest"]]
 print("missing:", sorted(want - kinds) or "none", "| false alerts on benign:", len(bad))
-sys.exit(0 if want <= kinds and not bad and received and exf and announced and rejected and spoof_ok else 1)
+sys.exit(0 if want <= kinds and not bad and received and exf and announced and rejected and spoof_ok and eicar_q and mal_frozen and mal_q else 1)

@@ -10,6 +10,10 @@ A small "NGAV-lite" in one 4 MB static binary:
   scanning, floods, spam bots, reverse shells, fileless networked processes and
   periodic static scans.
 * `ratel net`: a one-shot `/proc` network view.
+* **ClamAV signatures** (from freshclam's `/var/lib/clamav`) for plain
+  "known malware" detection of any file type, plus **quarantine** and
+  **process containment** (`ratel quarantine`, `ratel contain`, automatic in
+  `ratel watch` for signature matches).
 
 No ransomware rollback, no kernel driver, no eBPF toolchain, no cloud.
 
@@ -518,6 +522,153 @@ Limits:
   configured nor a big public one carry no names, until it's added with
   `resolver =`.
 
+## Known-malware signatures, quarantine and containment
+
+### ClamAV signatures
+
+When `/var/lib/clamav` exists (kept current by freshclam), `ratel scan` and
+`ratel watch` match **every file**, not only ELF/PE, against ClamAV's databases.
+ratel reads them with its own matcher in Rust: no libclamav, no clamd.
+
+* **Coverage:**
+  * whole-file MD5/SHA1/SHA256 hashes, including `*` sizes;
+  * PE section hashes;
+  * extended (`.ndb`) and logical (`.ldb`) body signatures, with the full hex
+    syntax, every offset form, the `::i ::w ::a ::f` modifiers and counted
+    expressions;
+  * target types, functionality levels, `.fp`/`.sfp` allowlists and `.ign2`;
+  * clamscan's text typing (ported from `textdet.c`) and text normalization
+    (from `textnorm.c`).
+
+  PUA signatures are off unless `--pua` is given.
+* **Not supported** (2,917 of ~600k general signatures skipped):
+  * PCRE, byte-compare, macro and fuzzy-image subsignatures;
+  * bytecode signatures and icon groups;
+  * container-only signatures, because ratel doesn't unpack archives, documents
+    or installers;
+  * ClamAV's full HTML and JavaScript normalizers (an approximation is used).
+* **Parity with clamscan:** `train/clamav_parity.py` builds a test file for
+  each of 1,500 randomly sampled real signatures. Of the 1,461 files it
+  generated, clamscan confirms 1,460. On all 1,460 of those, ratel reports
+  **exactly the same set of names as `clamscan --allmatch`**. That covers every
+  target type and offset form, counts, modifiers and text normalization.
+  * Hash, wildcard-size, section-hash, `.fp`/`.sfp` and `.ign2` cases all
+    match too.
+  * On `/usr/bin`, `/usr/lib/python3.14` and `/usr/share/doc`, neither scanner
+    reports anything.
+* **Cost:**
+  * The general part loads in about 1.2 s and uses **41 MB**.
+  * The Windows part is most of the database: 2.7M section hashes and
+    ~1.4M patterns. It loads (about 5 s, ~350 MB peak) only when a PE file is
+    scanned. `ratel watch` releases it after 10 idle minutes.
+  * Matching uses a 4-byte anchor index with a byte prefilter, a backtracking
+    bytecode matcher with per-try and per-pattern step budgets, and a memo for
+    `*` gaps. With signatures on, `/usr/bin` (2.3 GB) scans in 24 s instead of
+    10 s.
+  * Hash signatures are held as 64-bit prefixes. On a hit, the name comes from
+    the database files, which also re-checks the full hash.
+* **Trust:**
+  * The databases must be owned by root or the `clamav` user and must not be
+    group- or world-writable. Otherwise they are refused, with a health alert.
+  * A `.cvd`'s MD5 header is verified. ClamAV's own RSA and PKCS#7 signatures
+    are not; freshclam checks those when it downloads.
+  * Whoever can write the database decides what gets quarantined. The response
+    limits below cap the damage.
+
+### Quarantine (`ratel quarantine`)
+
+Files go into `/var/lib/ratel/quarantine/<id>/`, root-only.
+
+* **Storage:** each item is a scrambled copy (XOR keystream, not
+  encryption) plus `meta.json`. Other scanners don't re-detect it and it can't
+  be run by accident.
+* **Moving a file:**
+  * The file is opened once without following links, hashed through that
+    handle, and must still have the content that was scanned.
+  * It is removed with `unlinkat` on the parent directory, only if the name
+    still points to the same inode. A file or symlink swapped in meanwhile is
+    left alone, and the error says so.
+  * Hard links are reported, since other links keep the content.
+* **Restoring:** `ratel quarantine restore ID` writes the file back with its
+  mode, owner and mtime. It never overwrites, and never follows a symlink,
+  even with `--force`.
+  * The target directory is opened one component at a time without following
+    links. It must be the same directory (device and inode) the file came
+    from, owned by root or the file's owner.
+  * That blocks a quarantined user file being restored, by root, into a
+    directory swapped in by a symlink, such as `/etc/profile.d`.
+  * `--to` restores elsewhere.
+* **`/dev/shm` and `/dev/mqueue`:** both are covered; the rest of `/dev`,
+  `/proc` and `/sys` never are.
+* **Commands:** `list`, `show`, `add PATH`, `restore ID [--to PATH]` and
+  `delete ID`. `ratel scan --quarantine` moves signature matches from a manual
+  scan.
+
+### Containment (`ratel contain`)
+
+`ratel contain` freezes a process tree.
+
+* **Method:** it uses the cgroup v2 freezer. A `ratel-contain/<id>` cgroup is
+  frozen first, then the process and every descendant are moved in, repeating
+  until no new children appear.
+* **Fallback:** without a writable cgroup2 it uses SIGSTOP. That is weaker,
+  because a same-uid process can send SIGCONT.
+* **Undo:** `release ID` puts every process back in its original cgroup and
+  thaws it. `kill ID` ends the tree.
+* **Safety:**
+  * PID reuse is caught by checking each process's start time. ratel watch
+    passes the start time seen at detection, so a pid freed and reused by an
+    innocent process isn't frozen.
+  * It never freezes init, ratel or its ancestors, or kernel threads.
+  * It never freezes sshd, tailscaled, OpenRC, dockerd, containerd or prosody,
+    plus anything in `contain-never`, so a false positive can't lock the admin
+    out. Interpreters are protected only for their service user
+    (`/usr/bin/lua5.4@prosody`), so malware can't escape a freeze by running
+    as `lua5.4`.
+
+### What `ratel watch` does on its own
+
+| Detection | Default response |
+|---|---|
+| A file in a `scan-path` matches a signature | freeze processes running it, then quarantine it |
+| A running networked program's executable matches a signature | freeze its process tree, then quarantine the executable |
+| High behaviour alerts (exfil, beacon, reverse shell...) | nothing (`contain = high` to freeze) |
+| Capability scanner "high" | alert only |
+
+* **No automatic moves for package files:** a file that belongs to a package
+  (even a modified one) or is allowlisted is never moved automatically. A
+  trojaned `/usr/bin/sshd` is reported for reinstalling.
+* **No automatic moves without a package database:** if the package database
+  can't be trusted, nothing under `/usr`, `/bin`, `/sbin`, `/lib`, `/etc`,
+  `/boot` or `/opt` is moved.
+* **Responses act on what was scanned**, never on a path looked up again:
+  * processes are found by the scanned file's device and inode;
+  * the file is quarantined at the location the kernel reported for the open
+    file;
+  * the package-origin lookup uses that same location.
+
+  A directory swapped for a symlink to `/bin` right after the read can't turn
+  "quarantine /tmp/u/busybox" into "freeze every busybox".
+* **Every action lands in the alert's evidence**, with the undo command (the
+  XMPP message too).
+* **Not fully checked is never clean:** a file can hold many near-matches
+  meant to use up a signature's attempt budget before the real match. A file
+  where a matching budget ran out is reported as `INCONCLUSIVE`
+  (`clamav:not-fully-checked`, a medium alert in ratel watch), not as clean.
+  * Only anchor hits inside a signature's offset window count towards the
+    budget (50,000 per signature and file).
+  * PE section hashing stops at 96 sections and 4 name look-ups per file.
+* **Status:** `ratel status` and the dashboard's status show the vault and
+  containment counts.
+* **Off switches:** `quarantine = off`, `contain = off`.
+* **Tests:** the sandbox test runs this end to end without root, using a test
+  signature database. The EICAR file in a scanned folder is quarantined. A
+  copy of Python made "known malware" by its hash beacons to the test C2
+  address; it is frozen and its executable quarantined.
+  * A first version of that test used a byte-identical copy and so flagged the
+    interpreter running the test itself. ratel refused to freeze it, because it
+    was its own parent. That is how the system-directory rule above was found.
+
 ## Telling legitimate software apart
 
 A hypervisor contains every VM vendor string, a debugger reads TracerPid, a
@@ -741,3 +892,7 @@ rc-update add ratel-watch default && rc-service ratel-watch start
 
 It opens no ports, so the firewall needs no changes. It learns for 24 h before
 novelty alerts start. Nothing has been deployed.
+
+For the signature part, install freshclam so `/var/lib/clamav` stays current
+(Alpine: the `freshclam` package, run as its service or from cron).
+ratel picks up updated databases within 15 minutes. clamd is not needed.

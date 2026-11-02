@@ -192,6 +192,7 @@ dependencies = [
  "goblin",
  "iced-x86",
  "libc",
+ "memchr",
  "memmap2",
  "serde",
  "serde_json",

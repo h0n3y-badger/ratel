@@ -81,7 +81,7 @@ pub fn trusted_ancestors(dir: &Path) -> Result<(), String> {
     let abs = if dir.is_absolute() { dir.to_path_buf() } else { std::env::current_dir().map_err(|e| e.to_string())?.join(dir) };
     for a in abs.ancestors() {
         let md = std::fs::symlink_metadata(a).map_err(|e| format!("{}: {e}", a.display()))?;
-        if md.file_type().is_symlink() || (md.uid() == 0 && md.mode() & 0o1000 != 0) {
+        if md.file_type().is_symlink() || ((md.uid() == 0 || unmapped_owner(md.uid())) && md.mode() & 0o1000 != 0) {
             continue;
         }
         check_owner(a, &md, false)?;
@@ -90,7 +90,7 @@ pub fn trusted_ancestors(dir: &Path) -> Result<(), String> {
     let dir = std::fs::canonicalize(dir).map_err(|e| format!("{}: {e}", dir.display()))?;
     for a in dir.ancestors() {
         let md = std::fs::metadata(a).map_err(|e| format!("{}: {e}", a.display()))?;
-        if md.uid() == 0 && md.mode() & 0o1000 != 0 {
+        if (md.uid() == 0 || unmapped_owner(md.uid())) && md.mode() & 0o1000 != 0 {
             continue; // root-owned sticky
         }
         check_owner(a, &md, false)?;
@@ -144,9 +144,25 @@ pub fn trusted_read_string(p: &Path, max: u64) -> Result<String, String> {
     String::from_utf8(trusted_read(p, max)?).map_err(|_| format!("{} is not UTF-8", p.display()))
 }
 
+/// Inside a user namespace (tests, rootless containers) files of unmapped owners, such
+/// as the real root, show as the overflow uid. Accepted there only: in the initial
+/// namespace, where the daemon runs, nothing changes.
+fn unmapped_owner(uid: u32) -> bool {
+    static CHILD_NS: std::sync::OnceLock<Option<u32>> = std::sync::OnceLock::new();
+    let ov = CHILD_NS.get_or_init(|| {
+        let map = std::fs::read_to_string("/proc/self/uid_map").unwrap_or_default();
+        let initial = map.split_whitespace().collect::<Vec<_>>() == ["0", "0", "4294967295"];
+        if initial {
+            return None;
+        }
+        std::fs::read_to_string("/proc/sys/kernel/overflowuid").ok()?.trim().parse().ok()
+    });
+    *ov == Some(uid)
+}
+
 fn check_owner(p: &Path, md: &std::fs::Metadata, group_write_ok: bool) -> Result<(), String> {
     let me = euid();
-    if md.uid() != 0 && md.uid() != me {
+    if md.uid() != 0 && md.uid() != me && !unmapped_owner(md.uid()) {
         return Err(format!("{} is owned by uid {}, not root{}", p.display(), md.uid(), if me != 0 { " or us" } else { "" }));
     }
     let mode = md.mode();

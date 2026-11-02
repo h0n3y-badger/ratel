@@ -23,6 +23,10 @@ pub struct Assessment {
     pub roles: Vec<(&'static str, String)>,
     pub roles_applied: bool,
     pub origin: Option<Origin>,
+    /// ClamAV signature names this file matched.
+    pub signatures: Vec<String>,
+    /// ClamAV matching ran out of budget on this file: not fully checked.
+    pub sig_limited: bool,
 }
 
 #[derive(serde::Serialize, Clone)]
@@ -136,7 +140,27 @@ pub fn assess(a: &Analysis, m_: &Model) -> Assessment {
         crate::features::Format::Other => "other",
     };
     let roles = a.roles.iter().map(|(ri, ev)| (ROLES[*ri].name, ev.clone())).collect();
-    Assessment { caps, risk, verdict, findings, format, roles, roles_applied, origin: None }
+    Assessment { caps, risk, verdict, findings, format, roles, roles_applied, origin: None, signatures: vec![], sig_limited: false }
+}
+
+/// A ClamAV signature match makes a file malware, unless the admin allowlisted it.
+pub fn apply_signatures(r: &mut Assessment, sigs: Vec<String>) {
+    if sigs.is_empty() {
+        return;
+    }
+    r.signatures = sigs;
+    if r.verdict != "allowed" {
+        r.verdict = "malware";
+        r.risk = 1.0;
+    }
+}
+
+/// For a non-executable file that only signatures say anything about.
+pub fn signature_only(format: &'static str, sigs: Vec<String>) -> Assessment {
+    let mut r = Assessment { caps: vec![], risk: 0.0, verdict: "clean", findings: vec![], format, roles: vec![],
+        roles_applied: false, origin: None, signatures: vec![], sig_limited: false };
+    apply_signatures(&mut r, sigs);
+    r
 }
 
 const EXCUSED_FACTOR: f64 = 0.25;
@@ -201,6 +225,8 @@ pub fn print(p: &Path, r: &Assessment, o: &Opts) {
             "excused": r.caps.iter().filter_map(|c| c.excused_by.map(|e| (c.cap, e))).collect::<std::collections::BTreeMap<_, _>>(),
             "roles": r.roles.iter().map(|(n, e)| serde_json::json!({"role": n, "evidence": e, "applied": r.roles_applied})).collect::<Vec<_>>(),
             "origin": r.origin,
+            "signatures": r.signatures,
+            "signature_limits": r.sig_limited,
         });
         println!("{line}");
         return;
@@ -212,6 +238,11 @@ pub fn print(p: &Path, r: &Assessment, o: &Opts) {
             if let Some(e) = c.excused_by { tags.push(format!("excused: {e}")); }
             format!("{}({:.2}{})", c.cap, c.conf, tags.iter().map(|t| format!(", {t}")).collect::<String>())
         }).collect();
+    let mut det = det;
+    det.extend(r.signatures.iter().map(|s| format!("clamav:{}", crate::safety::safe(s))));
+    if r.sig_limited {
+        det.push("clamav:not-fully-checked".into());
+    }
     println!("{:<10} {:.2}  {}  [{}]{}", r.verdict.to_uppercase(), r.risk, crate::safety::safe_path(p),
         if det.is_empty() { "-".to_string() } else { det.join(" ") },
         if origin_tag.is_empty() { String::new() } else { format!("  ({origin_tag})") });

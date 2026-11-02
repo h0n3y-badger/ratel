@@ -330,6 +330,15 @@ pub fn status(args: &[String]) {
     if let Some(l) = v["last_alert"].as_object() {
         println!("  last alert {} {}", crate::safety::safe(l["time"].as_str().unwrap_or("")), crate::safety::safe(l["title"].as_str().unwrap_or("")));
     }
+    let x = &v["extra"];
+    if let Some(c) = x["clamav"].as_str() {
+        println!("  ClamAV signatures: {}", crate::safety::safe(c));
+    }
+    if x["quarantined"].is_u64() || x["contained"].is_u64() {
+        println!("  response: quarantine {}, contain {}; {} file(s) in quarantine, {} process tree(s) frozen",
+            if x["response"]["quarantine"] == true { "on" } else { "off" }, crate::safety::safe(x["response"]["contain"].as_str().unwrap_or("off")),
+            x["quarantined"].as_u64().unwrap_or(0), x["contained"].as_u64().unwrap_or(0));
+    }
     if v["notify_failures"].as_u64().unwrap_or(0) > 0 {
         println!("  XMPP notify failures: {} (see syslog)", v["notify_failures"]);
     }
