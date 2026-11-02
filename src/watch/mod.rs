@@ -38,7 +38,8 @@ usage: ratel watch [opts]
   --no-capture         no packet capture (no DNS / SYN / ICMP / UDP visibility)
   --no-scan-exes       don't statically scan executables that start networking
   --ignore ENTITY      never alert for this entity (repeatable; trailing * = prefix)
-  --ignore-dest DEST   never alert for this IP or domain (repeatable)
+  --ignore-dest IP     never alert for this address (repeatable; addresses only: a name
+                       could share a CDN address with any other site)
   --scan-path DIR      also scan DIR statically every --scan-every hours (repeatable);
                        alerts once per file version on `high` and on modified package files
   --scan-every H       hours between static scans (default 6)
@@ -52,6 +53,8 @@ usage: ratel watch [opts]
   --emit FILE          with --replay: write feature rows (training)
   --emit-all           with --emit: don't thin benign rows
   --loopback           include the loopback interface (testing in a network namespace)
+  --resolver IP        also trust DNS answers from this server (repeatable; /etc/resolv.conf
+                       servers and the big public resolvers are trusted already)
 ";
 
 #[derive(Default)]
@@ -76,6 +79,7 @@ struct WOpts {
     emit_all: bool,
     loopback: bool,
     scan_paths: Vec<String>,
+    resolvers: Vec<IpAddr>,
     scan_every: f64,
     digest_hour: i32,
     status: Option<String>,
@@ -89,7 +93,16 @@ fn parse(args: &[String]) -> Result<WOpts, String> {
     let cfg_path = args.windows(2).find(|w| w[0] == "--config").map(|w| w[1].clone());
     let mut all: Vec<String> = vec![];
     let cfg = cfg_path.clone().unwrap_or_else(|| "/etc/ratel/watch.conf".into());
-    match std::fs::read_to_string(&cfg) {
+    // the config decides what is ignored: refuse one that others could have edited
+    let read = if std::path::Path::new(&cfg).exists() {
+        match crate::safety::trusted_read_string(std::path::Path::new(&cfg), 1 << 20) {
+            Ok(s) => Ok(s),
+            Err(e) => return Err(format!("refusing config: {e} (fix: chown root, chmod go-w, no symlink)")),
+        }
+    } else {
+        Err(std::io::Error::from(std::io::ErrorKind::NotFound))
+    };
+    match read {
         Ok(s) => {
             for line in s.lines().map(str::trim).filter(|l| !l.is_empty() && !l.starts_with('#')) {
                 let (k, v) = line.split_once('=').map(|(k, v)| (k.trim(), v.trim())).unwrap_or((line, ""));
@@ -124,7 +137,11 @@ fn parse(args: &[String]) -> Result<WOpts, String> {
             "--no-capture" => o.no_capture = true,
             "--no-scan-exes" => o.no_scan = true,
             "--ignore" => o.ignore.push(val(&mut i)?),
-            "--ignore-dest" => o.ignore_dest.push(val(&mut i)?),
+            "--ignore-dest" => {
+                let v = val(&mut i)?;
+                let ip: IpAddr = v.parse().map_err(|_| format!("--ignore-dest takes an IP address, not {v:?}"))?;
+                o.ignore_dest.push(ip.to_string());
+            }
             "--duration" => o.duration = num(val(&mut i)?)?,
             "--json" => o.json = true,
             "--record" => o.record = Some(val(&mut i)?),
@@ -141,6 +158,10 @@ fn parse(args: &[String]) -> Result<WOpts, String> {
             }
             "--status" => o.status = Some(val(&mut i)?),
             "--scan-path" => o.scan_paths.push(val(&mut i)?),
+            "--resolver" => {
+                let v = val(&mut i)?;
+                o.resolvers.push(v.parse().map_err(|_| format!("bad resolver address {v}"))?);
+            }
             "--scan-every" => o.scan_every = num(val(&mut i)?)?.max(0.05),
             "-h" | "--help" => return Err(String::new()),
             s => return Err(format!("unknown watch option {s}")),
@@ -154,9 +175,27 @@ pub fn now() -> f64 {
     SystemTime::now().duration_since(UNIX_EPOCH).map(|d| d.as_secs_f64()).unwrap_or(0.0)
 }
 
+/// Learned state is only loaded from a directory and file nobody else can write: forged
+/// state could plant baselines, known destinations or cooldowns that hide an attack.
+fn load_state_checked(dir: &Option<String>) -> (State, Option<String>) {
+    let Some(d) = dir else { return (State::default(), None) };
+    let dp = std::path::Path::new(d);
+    let f = dp.join("net-state.json");
+    if !f.exists() {
+        return (State::default(), None);
+    }
+    let b = match crate::safety::trusted_read(&f, 512 << 20) {
+        Ok(b) => b,
+        Err(e) => return (State::default(), Some(format!("saved state ignored, starting fresh: {e}"))),
+    };
+    match serde_json::from_slice(&b).ok() {
+        Some(s) => (s, None),
+        None => (State::default(), Some("saved state unreadable, starting fresh".into())),
+    }
+}
+
 fn load_state(dir: &Option<String>) -> State {
-    dir.as_ref().and_then(|d| std::fs::read(format!("{d}/net-state.json")).ok())
-        .and_then(|b| serde_json::from_slice(&b).ok()).unwrap_or_default()
+    load_state_checked(dir).0
 }
 
 fn save_state(dir: &Option<String>, st: &mut State) {
@@ -187,9 +226,9 @@ impl Out {
         if self.json {
             println!("{j}");
         } else {
-            println!("{:<6} {}  {}", a.severity.to_uppercase(), fmt_t(a.t), a.title);
+            println!("{:<6} {}  {}", a.severity.to_uppercase(), fmt_t(a.t), crate::safety::safe(&a.title));
             for e in &a.evidence {
-                println!("         - {e}");
+                println!("         - {}", crate::safety::safe(e));
             }
         }
         if let Some(f) = self.log.as_mut() {
@@ -225,7 +264,7 @@ fn handle_alert(mut a: Alert, eng: &Engine, sink: &mut Sink, out: &mut Out, heal
 
 fn health_alert(kind_note: &str, severity: &'static str, title: &str, evidence: Vec<String>) -> Alert {
     Alert { t: now(), severity, kind: "health", entity: "ratel".into(), pid: std::process::id(), dest: kind_note.into(), score: 0.0,
-        title: title.into(), evidence, incident: String::new(), context: serde_json::Value::Null }
+        title: title.into(), evidence, incident: String::new(), context: serde_json::Value::Null, capped: false }
 }
 
 static STOP: AtomicBool = AtomicBool::new(false);
@@ -387,6 +426,34 @@ struct Ns {
     destroy: Option<diag::Diag>,
 }
 
+/// Nameservers from /etc/resolv.conf, and whether one of them is local (then the local
+/// resolver daemon's own upstream queries are trusted too).
+/// Public resolvers whose answers we believe even when a program asks them directly
+/// (containers commonly do). A program querying any *other* server gets no names: its own
+/// DNS server could otherwise claim that the attacker's address is github.com.
+const PUBLIC_RESOLVERS: &[&str] = &[
+    "1.1.1.1", "1.0.0.1", "8.8.8.8", "8.8.4.4", "9.9.9.9", "149.112.112.112", "208.67.222.222", "208.67.220.220",
+    "2606:4700:4700::1111", "2606:4700:4700::1001", "2001:4860:4860::8888", "2001:4860:4860::8844",
+    "2620:fe::fe", "2620:fe::9", "2620:119:35::35", "2620:119:53::53",
+];
+
+fn resolv_conf(extra: &[IpAddr]) -> (HashSet<IpAddr>, bool) {
+    let mut s: HashSet<IpAddr> = extra.iter().copied().collect();
+    s.extend(PUBLIC_RESOLVERS.iter().filter_map(|a| a.parse::<IpAddr>().ok()));
+    if let Ok(t) = std::fs::read_to_string("/etc/resolv.conf") {
+        for l in t.lines() {
+            let mut it = l.split_whitespace();
+            if it.next() == Some("nameserver") {
+                if let Some(ip) = it.next().and_then(|a| a.split('%').next()?.parse::<IpAddr>().ok()) {
+                    s.insert(ip);
+                }
+            }
+        }
+    }
+    let local = s.iter().any(|ip| ip.is_loopback());
+    (s, local)
+}
+
 fn netns_list() -> HashMap<u64, u32> {
     // network namespace inode -> one pid inside it
     let mut out = HashMap::new();
@@ -458,7 +525,8 @@ fn live(o: &WOpts, cfg: Config, model: crate::model::NetModel) {
     });
     let sock_ok = std::path::Path::new(&std::env::var("NOTIFY_SOCKET").unwrap_or_else(|_| "/run/prosody/notify.sock".into())).exists();
     let mut out = Out { json: o.json, log, notifier: notify::Notifier::new(!o.no_notify && (root || sock_ok), &o.notify_min) };
-    let mut eng = Engine::new(cfg, load_state(&state_dir), if model.units.is_empty() { None } else { Some(model) });
+    let (loaded, state_problem) = load_state_checked(&state_dir);
+    let mut eng = Engine::new(cfg, loaded, if model.units.is_empty() { None } else { Some(model) });
     let mut rec = o.record.as_ref().map(|p| std::io::BufWriter::new(std::fs::File::create(p).unwrap_or_else(|e| {
         eprintln!("ratel: {p}: {e}");
         std::process::exit(2)
@@ -487,7 +555,11 @@ fn live(o: &WOpts, cfg: Config, model: crate::model::NetModel) {
     let mut last_counts: HashMap<u64, (u64, u64, Instant)> = HashMap::new();
     // socket inodes no process holds (kernel-owned): don't rescan /proc for them every second
     let mut unattributable: HashMap<u64, Instant> = HashMap::new();
+    let mut rescan_gap = Duration::from_secs(1);
+    // UDP port -> owner; the host's own sockets take precedence over other network
+    // namespaces (anyone can `unshare -rn` and bind :53 in a namespace of their own)
     let mut udp_port: HashMap<u16, String> = HashMap::new();
+    let mut udp_pid: HashMap<u16, u32> = HashMap::new();
     let mut listening: HashSet<(u64, u16)> = HashSet::new();
     let mut listen_ents: HashSet<String> = HashSet::new();
     let mut flagged: HashSet<(u32, &'static str)> = HashSet::new();
@@ -501,19 +573,19 @@ fn live(o: &WOpts, cfg: Config, model: crate::model::NetModel) {
     // sockets present in the first dump: their counters are history
     let mut initial: Option<HashSet<u64>> = None;
     // static scans of newly networked executables, off the main loop
-    let (scan_tx, scan_rx) = std::sync::mpsc::channel::<(String, u32)>();
+    // (entity, file to read, path for package provenance)
+    let (scan_tx, scan_rx) = std::sync::mpsc::channel::<(String, std::path::PathBuf, std::path::PathBuf)>();
     let (res_tx, res_rx) = std::sync::mpsc::channel::<(String, f32, String)>();
     let mut scanned: HashSet<String> = HashSet::new();
     if !o.no_scan {
         std::thread::spawn(move || {
             let m = crate::model::Model::load(crate::model::EMBEDDED).ok();
             let kind = crate::trust::detect_pkg_kind();
-            for (ent, pid) in scan_rx {
-                let p = format!("/proc/{pid}/exe");
-                let Some(d) = crate::read_candidate_heap(std::path::Path::new(&p), 128 << 20) else { continue };
+            for (ent, p, exe) in scan_rx {
+                let Some(d) = crate::read_candidate_heap(&p, 128 << 20) else { continue };
                 let Some(m) = m.as_ref() else { continue };
                 let mut r = crate::report::assess(&crate::features::analyze(&d), m);
-                if let Ok(exe) = std::fs::read_link(&p) {
+                {
                     let h = crate::trust::hash(&d, kind);
                     let wanted: HashSet<std::path::PathBuf> = [exe.clone()].into_iter().collect();
                     if let Ok(t) = crate::trust::Trust::load(kind, &crate::trust::default_allowlists().into_iter().map(|f| (f, false)).collect::<Vec<_>>(), &wanted) {
@@ -548,10 +620,10 @@ fn live(o: &WOpts, cfg: Config, model: crate::model::NetModel) {
                     ev.push(format!("sha256 {}", sha.unwrap_or_default()));
                     let _ = file_tx.send(Alert {
                         t: now(), severity: if modified || r.risk >= 0.85 { "high" } else { "medium" }, kind: "file",
-                        entity: p.display().to_string(), pid: 0, dest: String::new(), score: r.risk,
-                        title: if modified { format!("package file modified after install: {}", p.display()) }
-                            else { format!("suspicious binary ({:.2}: {}): {}", r.risk, det.join(", "), p.display()) },
-                        evidence: ev, incident: String::new(), context: serde_json::Value::Null,
+                        entity: crate::safety::safe_path(p), pid: 0, dest: String::new(), score: r.risk,
+                        title: if modified { format!("package file modified after install: {}", crate::safety::safe_path(p)) }
+                            else { format!("suspicious binary ({:.2}: {}): {}", r.risk, det.join(", "), crate::safety::safe_path(p)) },
+                        evidence: ev, incident: String::new(), context: serde_json::Value::Null, capped: false,
                     });
                 });
                 std::thread::sleep(every);
@@ -572,11 +644,26 @@ fn live(o: &WOpts, cfg: Config, model: crate::model::NetModel) {
     let mut last_status = Instant::now() - Duration::from_secs(3600);
     let mut last_drop_check = Instant::now();
     let mut last_health: HashMap<&'static str, f64> = HashMap::new();
+    if let Some(problem) = &state_problem {
+        let a = health_alert("state", "high", "ratel state was not trusted (possible tampering)", vec![problem.clone()]);
+        handle_alert(a, &eng, &mut sink, &mut out, &mut health);
+    }
     if eng.st.running && state_dir.is_some() {
         let a = health_alert("unclean", "medium", "ratel watch was not stopped cleanly (crash, kill or power loss)",
             vec![format!("last state save {}", incidents::local_time(eng.st.saved_t))]);
         handle_alert(a, &eng, &mut sink, &mut out, &mut health);
     }
+    // self-integrity: notice when the ratel binary itself changes between runs
+    let me_sha = std::fs::read("/proc/self/exe").ok().map(|b| {
+        use sha2::Digest;
+        crate::trust::hex(&sha2::Sha256::digest(&b))
+    }).unwrap_or_default();
+    if !me_sha.is_empty() && !eng.st.exe_sha256.is_empty() && eng.st.exe_sha256 != me_sha {
+        let a = health_alert("binary", "medium", "the ratel binary changed since its last run (upgrade, or tampering?)",
+            vec![format!("was sha256 {}", eng.st.exe_sha256), format!("now sha256 {me_sha}")]);
+        handle_alert(a, &eng, &mut sink, &mut out, &mut health);
+    }
+    eng.st.exe_sha256 = me_sha.clone();
     eng.st.running = true;
     save_state(&state_dir, &mut eng.st);
 
@@ -598,9 +685,17 @@ fn live(o: &WOpts, cfg: Config, model: crate::model::NetModel) {
 
     let mut pkts = vec![];
     let mut destroyed = vec![];
+    let mut dnsq = dns::QueryTracker::default();
+    let mut resolvers = resolv_conf(&o.resolvers);
+    let mut resolv_at = Instant::now();
+    let mut dns_unsolicited_seen = 0u64;
     while !STOP.load(Ordering::Relaxed) {
         if o.duration > 0.0 && started.elapsed().as_secs_f64() >= o.duration {
             break;
+        }
+        if resolv_at.elapsed() >= Duration::from_secs(60) {
+            resolv_at = Instant::now();
+            resolvers = resolv_conf(&o.resolvers);
         }
         // ---- network namespaces (containers)
         if ns_refresh.elapsed() >= Duration::from_secs(30) {
@@ -643,6 +738,7 @@ fn live(o: &WOpts, cfg: Config, model: crate::model::NetModel) {
             pkts.clear();
             c.read(&mut pkts, o.loopback);
             let mut lookups = 0;
+            let mut dns_lookups = 0;
             for p in pkts.drain(..) {
                 let ev = match p {
                     capture::Pkt::Syn { src, dst, sport, dport } => {
@@ -667,7 +763,31 @@ fn live(o: &WOpts, cfg: Config, model: crate::model::NetModel) {
                         }
                         Event::Syn { t, ent, sport, rip: dst, rport: dport }
                     }
-                    capture::Pkt::Dns { src, sport, dport, msg } => {
+                    capture::Pkt::Dns { src, dst, sport, dport, msg } => {
+                        let mut msg = msg;
+                        if msg.resp {
+                            match dnsq.answer(t, msg.id, &msg.name, dport, src) {
+                                None => continue, // unsolicited / forged answer: never believed
+                                Some(false) => msg.answers.clear(), // answered, but not by a trusted resolver
+                                Some(true) => {}
+                            }
+                        } else {
+                            // trusted: to a configured resolver, or from the local resolver daemon
+                            let mut trusted = resolvers.0.contains(&dst);
+                            if !trusted && resolvers.1 && dns_lookups < 256 {
+                                dns_lookups += 1;
+                                // the host's resolver daemon (owner of :53 in our namespace)
+                                // asking upstream: same process, by pid
+                                if let (Some(rpid), Some(n)) = (udp_pid.get(&53), nss.get_mut(&me)) {
+                                    let e = n.dump.lookup_proto(libc::IPPROTO_UDP as u8, (src, sport), (dst, dport));
+                                    trusted = e.is_some_and(|e| match procs.get(e.inode) {
+                                        Some(p) => p.pid == *rpid,
+                                        None => procs::holds_socket(*rpid, e.inode), // opened since the last scan
+                                    });
+                                }
+                            }
+                            dnsq.query(t, msg.id, &msg.name, sport, dst, trusted);
+                        }
                         let ent = if msg.resp { udp_port.get(&dport).cloned() }
                             else if local.contains(&src) || o.loopback { udp_port.get(&sport).cloned() } else { None };
                         Event::Dns { t, ent, name: msg.name, qtype: msg.qtype, resp: msg.resp, rcode: msg.rcode, answers: msg.answers }
@@ -718,12 +838,14 @@ fn live(o: &WOpts, cfg: Config, model: crate::model::NetModel) {
             }
             let unknown = entries.iter().any(|(_, e)| e.inode != 0 && !cookie_ent.contains_key(&e.cookie) && procs.get(e.inode).is_none()
                 && unattributable.get(&e.inode).is_none_or(|first| first.elapsed() < Duration::from_secs(30)));
-            if (unknown && procs_at.elapsed() >= Duration::from_secs(1)) || procs_at.elapsed() >= Duration::from_secs(15) {
+            if (unknown && procs_at.elapsed() >= rescan_gap) || procs_at.elapsed() >= Duration::from_secs(15) {
+                let missing: Vec<u64> = entries.iter().filter(|(_, e)| e.inode != 0 && procs.get(e.inode).is_none()).map(|(_, e)| e.inode).collect();
                 procs = procs::Procs::scan();
                 procs_at = Instant::now();
                 if unattributable.len() > 20_000 {
                     unattributable.clear();
                 }
+                let found = missing.iter().any(|i| procs.get(*i).is_some());
                 for (_, e) in &entries {
                     if e.inode != 0 && procs.get(e.inode).is_none() {
                         // still unattributed after 30 s = kernel-owned (NFS, CIFS) or a race we lost
@@ -732,6 +854,9 @@ fn live(o: &WOpts, cfg: Config, model: crate::model::NetModel) {
                         unattributable.remove(&e.inode);
                     }
                 }
+                // a stream of sockets that never resolve (short-lived on purpose) must not
+                // keep ratel rescanning /proc every second: back off while rescans find nothing
+                rescan_gap = if found || !unknown { Duration::from_secs(1) } else { (rescan_gap * 2).min(Duration::from_secs(8)) };
             }
             let mut seen = HashSet::new();
             for (ens, e) in &entries {
@@ -756,9 +881,28 @@ fn live(o: &WOpts, cfg: Config, model: crate::model::NetModel) {
                 if !cookie_ent.contains_key(&e.cookie) && pid != 0 {
                     cookie_ent.insert(e.cookie, (ent.clone(), pid));
                 }
-                if pid != 0 && !o.no_scan && engine::dest_class(&e.remote.0) == engine::DestClass::Public && !scanned.contains(&ent) {
-                    scanned.insert(ent.clone());
-                    let _ = scan_tx.send((ent.clone(), pid));
+                if pid != 0 && !o.no_scan && engine::dest_class(&e.remote.0) != engine::DestClass::Local {
+                    // the real program (not the loader that started it), keyed by the file's
+                    // identity so a binary swapped in at the same path is scanned again
+                    let mut targets: Vec<(std::path::PathBuf, std::path::PathBuf)> = procs.list.iter().find(|x| x.pid == pid)
+                        .map(|x| x.mapped.iter().map(|(f, p)| (f.clone(), p.into())).collect()).unwrap_or_default();
+                    if targets.is_empty() {
+                        let f: std::path::PathBuf = format!("/proc/{pid}/exe").into();
+                        let p = std::fs::read_link(&f).unwrap_or_else(|_| f.clone());
+                        targets.push((f, p));
+                    }
+                    use std::os::unix::fs::MetadataExt;
+                    for (read, origin_path) in targets {
+                        // the file's identity (ctime changes on any write, and can't be set back)
+                        let Ok(md) = std::fs::metadata(&read) else { continue };
+                        let key = format!("{}:{}:{}.{}:{}", md.dev(), md.ino(), md.ctime(), md.ctime_nsec(), md.size());
+                        if scanned.len() > 20_000 {
+                            scanned.clear();
+                        }
+                        if scanned.insert(key) {
+                            let _ = scan_tx.send((ent.clone(), read, origin_path));
+                        }
+                    }
                 }
                 if let Some((s0, r0, at)) = last_counts.get(&e.cookie) {
                     if (*s0, *r0) == (e.sent, e.recv) && at.elapsed() < Duration::from_secs(300) {
@@ -795,13 +939,20 @@ fn live(o: &WOpts, cfg: Config, model: crate::model::NetModel) {
         if last_udp.elapsed() >= Duration::from_secs(10) {
             last_udp = Instant::now();
             udp_port.clear();
-            for n in nss.values_mut() {
+            udp_pid.clear();
+            let mut order: Vec<u64> = nss.keys().copied().collect();
+            order.sort_by_key(|k| (*k != me, *k));
+            for k in order {
+                let Some(n) = nss.get_mut(&k) else { continue };
                 let mut v = vec![];
                 let _ = n.dump.dump(libc::AF_INET as u8, libc::IPPROTO_UDP as u8, &mut v);
                 let _ = n.dump.dump(libc::AF_INET6 as u8, libc::IPPROTO_UDP as u8, &mut v);
                 for e in v {
                     if let Some(p) = procs.get(e.inode) {
-                        udp_port.insert(e.local.1, p.ent.clone());
+                        udp_port.entry(e.local.1).or_insert_with(|| p.ent.clone());
+                        if k == me {
+                            udp_pid.entry(e.local.1).or_insert(p.pid);
+                        }
                     }
                 }
             }
@@ -836,6 +987,15 @@ fn live(o: &WOpts, cfg: Config, model: crate::model::NetModel) {
             health.notify_failures = out.notifier.failures();
             if last_drop_check.elapsed() >= Duration::from_secs(600) {
                 last_drop_check = Instant::now();
+                // a burst of DNS answers nobody asked for = someone trying to spoof names
+                let forged = dnsq.unsolicited - dns_unsolicited_seen;
+                dns_unsolicited_seen = dnsq.unsolicited;
+                if forged >= 20 && t - last_health.get("dnsspoof").copied().unwrap_or(0.0) > 21_600.0 {
+                    last_health.insert("dnsspoof", t);
+                    let a = health_alert("dnsspoof", "medium", "possible DNS spoofing: answers to queries this host never sent",
+                        vec![format!("{forged} unsolicited DNS answers in 10 minutes were ignored (names from them are not trusted)")]);
+                    handle_alert(a, &eng, &mut sink, &mut out, &mut health);
+                }
                 let (p, d) = (health.win_packets, health.win_drops);
                 // tp_packets already includes the drops
                 if d >= 100 && d * 100 >= p.max(1) && t - last_health.get("drops").copied().unwrap_or(0.0) > 21_600.0 {
@@ -903,7 +1063,7 @@ fn live(o: &WOpts, cfg: Config, model: crate::model::NetModel) {
                 }
                 let open = sink.store.as_ref().map_or(0, |s| s.open_count());
                 incidents::write_status(sp, &health, &eng, serde_json::json!({"open_incidents": open, "suppressions": eng.cfg.suppress.len(),
-                    "capture": cap.is_some(), "root": root}));
+                    "capture": cap.is_some(), "root": root, "exe_sha256": me_sha, "dns_unsolicited": dnsq.unsolicited}));
             }
         }
         if last_save.elapsed() >= Duration::from_secs(600) {

@@ -121,6 +121,7 @@ fn read_procs() -> (Vec<Proc>, usize) {
         let uid = std::fs::read_to_string(format!("{base}/status")).ok()
             .and_then(|s| s.lines().find(|l| l.starts_with("Uid:")).and_then(|l| l.split_whitespace().nth(1)?.parse().ok()))
             .unwrap_or(u32::MAX);
+        let (comm, cmdline, exe) = (crate::safety::safe(&comm), crate::safety::safe(&cmdline), crate::safety::safe(&exe));
         out.push(Proc { pid, uid, comm, cmdline, exe, inodes });
     }
     (out, denied)

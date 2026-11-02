@@ -313,9 +313,11 @@ pub fn process_context(pid: u32) -> serde_json::Value {
     }
     let exe = rd("exe");
     let (sha, pkg) = exe.as_ref().map(|e| exe_identity(&format!("{base}/exe"), e)).unwrap_or((None, None));
+    let s = |o: Option<String>| o.map(|x| crate::safety::safe(&x));
+    let tree: Vec<String> = tree.iter().map(|t| crate::safety::safe(t)).collect();
     serde_json::json!({
         "pid": pid, "user": user_name(uid).unwrap_or_else(|| uid.to_string()), "uid": uid,
-        "exe": exe, "sha256": sha, "origin": pkg, "cmdline": cmd(pid), "cwd": rd("cwd"), "started": started,
+        "exe": s(exe), "sha256": sha, "origin": pkg, "cmdline": s(cmd(pid)), "cwd": s(rd("cwd")), "started": started,
         "container": super::procs::container_of(pid), "parents": tree,
         "open_fds": std::fs::read_dir(format!("{base}/fd")).map(|d| d.count()).ok(),
     })
@@ -410,13 +412,38 @@ pub fn load_suppressions_checked(state_dir: &Path) -> (HashSet<(String, String, 
     let mut skipped = vec![];
     for (n, f) in feedback_files(state_dir).into_iter().enumerate() {
     let size = std::fs::metadata(&f).map(|m| m.len()).unwrap_or(0);
+    // feedback.jsonl (written by root's `ratel ack`) must be root-only; feedback.d is the
+    // dashboard's inbox and is treated as untrusted input anyway (scoped, announced)
+    let root_file = f.parent() == Some(state_dir);
     if n >= FEEDBACK_MAX_FILES || size > FEEDBACK_MAX_BYTES {
         if size > 0 || n >= FEEDBACK_MAX_FILES {
             skipped.push(format!("{} ({} bytes)", f.display(), size));
         }
         continue;
     }
-    let Ok(t) = std::fs::read_to_string(&f) else { continue };
+    let t = if root_file {
+        match crate::safety::trusted_read_string(&f, FEEDBACK_MAX_BYTES) {
+            Ok(t) => t,
+            Err(e) => {
+                if f.exists() {
+                    skipped.push(format!("ignored {}: {e}", f.display()));
+                }
+                continue;
+            }
+        }
+    } else {
+        // the dashboard's inbox: untrusted, but never a FIFO/symlink/endless file
+        match crate::safety::bounded_read(&f, FEEDBACK_MAX_BYTES).map(String::from_utf8) {
+            Ok(Ok(t)) => t,
+            Ok(Err(_)) => continue,
+            Err(e) => {
+                if f.exists() {
+                    skipped.push(format!("ignored {}: {e}", f.display()));
+                }
+                continue;
+            }
+        }
+    };
     {
         for l in t.lines() {
             let Ok(v) = serde_json::from_str::<serde_json::Value>(l) else { continue };
@@ -545,7 +572,7 @@ mod tests {
 
     fn alert(t: f64, ent: &str, dest: &str, kind: &'static str) -> Alert {
         Alert { t, severity: "high", kind, entity: ent.into(), pid: 0, dest: dest.into(), score: 0.9, title: "x".into(),
-            evidence: vec![], incident: String::new(), context: serde_json::Value::Null }
+            evidence: vec![], incident: String::new(), context: serde_json::Value::Null, capped: false }
     }
 
     #[test]

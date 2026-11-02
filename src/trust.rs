@@ -27,13 +27,23 @@ pub enum PkgKind {
 const PACMAN_DB: &str = "/var/lib/pacman/local";
 const APK_DB: &str = "/lib/apk/db/installed";
 
+/// The package database in use, if it can be trusted: a database anyone but root could
+/// have written would let them vouch for their own binaries.
 pub fn detect_pkg_kind() -> PkgKind {
-    if Path::new(APK_DB).is_file() {
-        PkgKind::Apk
+    static WARNED: std::sync::Once = std::sync::Once::new();
+    let (kind, check) = if Path::new(APK_DB).is_file() {
+        (PkgKind::Apk, crate::safety::trusted_file(Path::new(APK_DB)))
     } else if Path::new(PACMAN_DB).is_dir() {
-        PkgKind::Pacman
+        (PkgKind::Pacman, crate::safety::trusted_dir(Path::new(PACMAN_DB), false))
     } else {
-        PkgKind::None
+        return PkgKind::None;
+    };
+    match check {
+        Ok(()) => kind,
+        Err(e) => {
+            WARNED.call_once(|| eprintln!("ratel: package database not trusted, provenance disabled: {e}"));
+            PkgKind::None
+        }
     }
 }
 
@@ -84,10 +94,17 @@ impl Trust {
     pub fn load(kind: PkgKind, allow_files: &[(String, bool)], wanted: &HashSet<PathBuf>) -> Result<Trust, String> {
         let mut allow = HashSet::new();
         for (f, explicit) in allow_files {
-            match std::fs::read_to_string(f) {
+            if !Path::new(f).exists() {
+                if *explicit {
+                    return Err(format!("{f}: not found"));
+                }
+                continue;
+            }
+            // an allowlist others can write would let them allow their own malware
+            match crate::safety::trusted_read_string(Path::new(f), 64 << 20) {
                 Ok(s) => parse_allowlist(&s, &mut allow),
-                Err(e) if *explicit => return Err(format!("{f}: {e}")),
-                Err(_) => {}
+                Err(e) if *explicit => return Err(format!("refusing allowlist: {e}")),
+                Err(e) => eprintln!("ratel: ignoring allowlist: {e}"),
             }
         }
         let mut owned = HashMap::new();

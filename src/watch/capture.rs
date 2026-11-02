@@ -16,7 +16,7 @@ pub const UDP_SAMPLE: u32 = 16;
 
 pub enum Pkt {
     Syn { src: IpAddr, dst: IpAddr, sport: u16, dport: u16 },
-    Dns { src: IpAddr, sport: u16, dport: u16, msg: DnsMsg },
+    Dns { src: IpAddr, dst: IpAddr, sport: u16, dport: u16, msg: DnsMsg },
     /// `inbound`: arrived from `src`; otherwise sent to `dst`.
     Udp { src: IpAddr, dst: IpAddr, sport: u16, dport: u16, len: u32, inbound: bool },
     Icmp { dst: IpAddr, len: u32 },
@@ -236,7 +236,7 @@ fn parse(b: &[u8]) -> Option<Pkt> {
             let dport = u16::from_be_bytes([*h.get(2)?, *h.get(3)?]);
             if sport == 53 || dport == 53 {
                 let msg = dns::parse(h.get(8..)?)?;
-                Some(Pkt::Dns { src, sport, dport, msg })
+                Some(Pkt::Dns { src, dst, sport, dport, msg })
             } else {
                 Some(Pkt::Udp { src, dst, sport, dport, len: total.saturating_sub(l4) as u32, inbound: false })
             }

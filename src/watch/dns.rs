@@ -4,6 +4,8 @@
 use std::net::{IpAddr, Ipv4Addr, Ipv6Addr};
 
 pub struct DnsMsg {
+    /// Transaction id (matches responses to queries).
+    pub id: u16,
     pub resp: bool,
     pub rcode: u8,
     pub name: String,
@@ -83,7 +85,7 @@ pub fn parse(msg: &[u8]) -> Option<DnsMsg> {
             off = o + 10 + rdlen;
         }
     }
-    Some(DnsMsg { resp, rcode: (flags & 0xF) as u8, name, qtype, answers })
+    Some(DnsMsg { id: u16::from_be_bytes([msg[0], msg[1]]), resp, rcode: (flags & 0xF) as u8, name, qtype, answers })
 }
 
 /// Second-level suffixes and dynamic-DNS / hosting zones where the registrable
@@ -132,6 +134,108 @@ pub fn entropy(s: &str) -> f32 {
         let p = c as f32 / n;
         -p * p.log2()
     }).sum()
+}
+
+/// Answers are only believed when they match a query this host sent: same transaction
+/// id, same name, from the server asked, to the port that asked, within 10 s. A forged
+/// answer (e.g. mapping a C2 address to "github.com" so it looks like a known site)
+/// is dropped and counted.
+#[derive(Default)]
+pub struct QueryTracker {
+    /// [untrusted, trusted]: a flood of queries to some random server can't push out the
+    /// pending queries of the real resolver
+    pools: [Pool; 2],
+    pub unsolicited: u64,
+    evicted_t: f64,
+}
+
+type QKey = (u16, String, u16, IpAddr);
+
+#[derive(Default)]
+struct Pool {
+    pending: std::collections::HashMap<QKey, f64>,
+    order: std::collections::VecDeque<(f64, QKey)>,
+}
+
+const POOL_MAX: usize = 50_000;
+
+impl QueryTracker {
+    /// `trusted`: the query went to a configured resolver, or came from the local resolver
+    /// daemon. Answers to other queries (a process asking its *own* DNS server) are matched
+    /// but their names are not believed: they can't make an address look like github.com.
+    pub fn query(&mut self, t: f64, id: u16, name: &str, sport: u16, server: IpAddr, trusted: bool) {
+        let p = &mut self.pools[trusted as usize];
+        // expire, then evict oldest-first (never everything at once: a flood would
+        // otherwise drop the answer that is in flight right now)
+        while let Some((t0, k)) = p.order.front() {
+            if t - *t0 < 10.0 && p.pending.len() < POOL_MAX {
+                break;
+            }
+            if p.pending.get(k) == Some(t0) {
+                if t - *t0 < 10.0 {
+                    self.evicted_t = t;
+                }
+                p.pending.remove(k);
+            }
+            p.order.pop_front();
+        }
+        let k = (id, name.to_string(), sport, server);
+        p.pending.insert(k.clone(), t);
+        p.order.push_back((t, k));
+    }
+
+    /// Some(trusted) if this response answers a pending query (then consumed), None if forged.
+    pub fn answer(&mut self, t: f64, id: u16, name: &str, dport: u16, server: IpAddr) -> Option<bool> {
+        let k = (id, name.to_string(), dport, server);
+        for tr in [true, false] {
+            if let Some(t0) = self.pools[tr as usize].pending.remove(&k) {
+                if t - t0 < 10.0 {
+                    return Some(tr);
+                }
+            }
+        }
+        // answers to queries we had to evict aren't evidence of spoofing
+        if t - self.evicted_t > 10.0 {
+            self.unsolicited += 1;
+        }
+        None
+    }
+}
+
+#[cfg(test)]
+mod tracker_tests {
+    use super::*;
+
+    #[test]
+    fn forged_answers_rejected() {
+        let srv: IpAddr = "10.53.53.53".parse().unwrap();
+        let mut q = QueryTracker::default();
+        q.query(100.0, 7, "api.example.com", 40000, srv, true);
+        assert!(q.answer(100.1, 7, "api.example.com", 40000, "10.9.9.9".parse().unwrap()).is_none(), "wrong server");
+        assert!(q.answer(100.1, 8, "api.example.com", 40000, srv).is_none(), "wrong id");
+        assert!(q.answer(100.1, 7, "github.com", 40000, srv).is_none(), "wrong name");
+        assert_eq!(q.answer(100.2, 7, "api.example.com", 40000, srv), Some(true));
+        assert!(q.answer(100.3, 7, "api.example.com", 40000, srv).is_none(), "replayed");
+        q.query(200.0, 9, "x.org", 1, srv, true);
+        assert!(q.answer(215.0, 9, "x.org", 1, srv).is_none(), "too late");
+        q.query(300.0, 10, "github.com", 2, "203.0.113.66".parse().unwrap(), false);
+        assert_eq!(q.answer(300.1, 10, "github.com", 2, "203.0.113.66".parse().unwrap()), Some(false), "own DNS server: matched, not trusted");
+        assert_eq!(q.unsolicited, 5);
+        // a flood of untrusted queries can't evict a pending trusted one
+        q.query(400.0, 11, "real.example", 3, srv, true);
+        for i in 0..(POOL_MAX as u32 + 10) {
+            q.query(400.5, (i % 65536) as u16, "flood.example", (i / 65536) as u16, "203.0.113.66".parse().unwrap(), false);
+        }
+        assert_eq!(q.answer(400.6, 11, "real.example", 3, srv), Some(true));
+        // and a trusted-pool flood evicts oldest first without counting spoofing
+        let before = q.unsolicited;
+        for i in 0..(POOL_MAX as u32 + 10) {
+            q.query(401.0, (i % 65536) as u16, "flood.example", 1000 + (i / 65536) as u16, srv, true);
+        }
+        assert!(q.answer(401.1, 0, "flood.example", 1000, srv).is_none(), "oldest evicted");
+        assert_eq!(q.unsolicited, before, "eviction is not spoofing");
+        assert_eq!(q.answer(401.1, 20, "flood.example", 1000, srv), Some(true));
+    }
 }
 
 /// Deterministic, std-only fuzzing helpers shared by the parser tests in

@@ -46,7 +46,7 @@ def synth_one(i):
     tr, fams = gen_traces.make_trace(i, SEED, None)
     evs = [d for _, d in tr.ev]
     labels = [e for e in evs if e["e"] == "label"]
-    alerts = [a for a in replay(evs) if a["severity"] in ("medium", "high")]
+    alerts = [a for a in replay(evs) if a["severity"] in ("medium", "high") and not a.get("capped")]
     bad_ents = {l["ent"] for l in labels}
     hit = defaultdict(bool)
     # attack phase: did it start while ratel was still learning (first 24 h)?

@@ -90,8 +90,8 @@ impl Diag {
             return Err(io::Error::last_os_error());
         }
         loop {
-            // SAFETY: receiving into our own buffer of the given length.
-            let n = unsafe { libc::recv(self.fd.as_raw_fd(), self.buf.as_mut_ptr() as *mut libc::c_void, self.buf.len(), 0) };
+            // only the kernel may answer (see recv_kernel)
+            let n = recv_kernel(self.fd.as_raw_fd(), &mut self.buf);
             if n < 0 {
                 let e = io::Error::last_os_error();
                 if e.kind() == io::ErrorKind::Interrupted {
@@ -107,6 +107,11 @@ impl Diag {
 
     /// Exact lookup of one TCP socket by its 4-tuple (as seen from this host).
     pub fn lookup(&mut self, local: (IpAddr, u16), remote: (IpAddr, u16)) -> Option<Entry> {
+        self.lookup_proto(libc::IPPROTO_TCP as u8, local, remote)
+    }
+
+    /// Exact lookup of one socket (TCP or UDP) by its 4-tuple.
+    pub fn lookup_proto(&mut self, proto: u8, local: (IpAddr, u16), remote: (IpAddr, u16)) -> Option<Entry> {
         let family = match (local.0, remote.0) {
             (IpAddr::V4(_), IpAddr::V4(_)) => libc::AF_INET as u8,
             (IpAddr::V6(_), IpAddr::V6(_)) => libc::AF_INET6 as u8,
@@ -119,18 +124,22 @@ impl Diag {
         req[6..8].copy_from_slice(&NLM_F_REQUEST.to_ne_bytes());
         req[8..12].copy_from_slice(&self.seq.to_ne_bytes());
         req[16] = family;
-        req[17] = libc::IPPROTO_TCP as u8;
-        req[18] = 1 << (INET_DIAG_INFO - 1);
+        req[17] = proto;
+        req[18] = if proto == libc::IPPROTO_TCP as u8 { 1 << (INET_DIAG_INFO - 1) } else { 0 };
         req[20..24].copy_from_slice(&u32::MAX.to_ne_bytes());
         let id = &mut req[24..72];
-        id[0..2].copy_from_slice(&local.1.to_be_bytes());
-        id[2..4].copy_from_slice(&remote.1.to_be_bytes());
+        // TCP lookups take (local, remote); udp_dump_one reads the request as the *packet*
+        // source/destination, i.e. (remote, local). Getting this wrong finds the wildcard
+        // listener on the remote port instead of the socket we asked about.
+        let (a, b) = if proto == libc::IPPROTO_UDP as u8 { (remote, local) } else { (local, remote) };
+        id[0..2].copy_from_slice(&a.1.to_be_bytes());
+        id[2..4].copy_from_slice(&b.1.to_be_bytes());
         let put = |b: &mut [u8], ip: IpAddr| match ip {
             IpAddr::V4(v) => b[..4].copy_from_slice(&v.octets()),
             IpAddr::V6(v) => b[..16].copy_from_slice(&v.octets()),
         };
-        put(&mut id[4..20], local.0);
-        put(&mut id[20..36], remote.0);
+        put(&mut id[4..20], a.0);
+        put(&mut id[20..36], b.0);
         id[40..48].copy_from_slice(&[0xff; 8]); // INET_DIAG_NOCOOKIE
         // SAFETY: as in dump().
         unsafe {
@@ -139,14 +148,15 @@ impl Diag {
             }
             // replies to earlier requests (a dump cut short) are skipped by sequence number
             for _ in 0..8 {
-                let n = libc::recv(self.fd.as_raw_fd(), self.buf.as_mut_ptr() as *mut libc::c_void, self.buf.len(), 0);
+                let n = recv_kernel(self.fd.as_raw_fd(), &mut self.buf);
                 if n <= 0 {
                     return None;
                 }
                 let mut v = vec![];
                 let done = parse_msgs(&self.buf[..n as usize], &mut v, Some(self.seq));
                 if let Some(e) = v.pop() {
-                    return Some(e);
+                    // the socket asked about, not some other match
+                    return (e.local.1 == local.1).then_some(e);
                 }
                 if done {
                     return None;
@@ -159,8 +169,8 @@ impl Diag {
     /// Drain pending destroy notifications (non-blocking).
     pub fn drain(&mut self, out: &mut Vec<Entry>) {
         loop {
-            // SAFETY: as above.
-            let n = unsafe { libc::recv(self.fd.as_raw_fd(), self.buf.as_mut_ptr() as *mut libc::c_void, self.buf.len(), 0) };
+            // destroy notifications: kernel only
+            let n = recv_kernel(self.fd.as_raw_fd(), &mut self.buf);
             if n <= 0 {
                 return; // EAGAIN, or ENOBUFS after an overflow: events lost, keep going
             }
@@ -244,6 +254,24 @@ fn parse_msgs(mut b: &[u8], out: &mut Vec<Entry>, seq: Option<u32>) -> bool {
         b = &b[step..];
     }
     false
+}
+
+/// recv() that only accepts datagrams from the kernel (netlink port id 0): no other
+/// process can feed us socket lists or destroy notifications.
+fn recv_kernel(fd: i32, buf: &mut [u8]) -> isize {
+    loop {
+        // SAFETY: recvfrom into our buffer; sockaddr_nl is plain data.
+        let (n, src) = unsafe {
+            let mut sa: libc::sockaddr_nl = std::mem::zeroed();
+            let mut sl = std::mem::size_of::<libc::sockaddr_nl>() as u32;
+            let n = libc::recvfrom(fd, buf.as_mut_ptr() as *mut libc::c_void, buf.len(), 0, &mut sa as *mut _ as *mut libc::sockaddr, &mut sl);
+            (n, sa.nl_pid)
+        };
+        if n <= 0 || src == 0 {
+            return n;
+        }
+        // from a userspace sender: drop it and read on
+    }
 }
 
 /// Runs `f` on a thread that has joined the network namespace at `ns_path`

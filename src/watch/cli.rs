@@ -93,9 +93,9 @@ pub fn alerts(args: &[String]) {
             println!("── incident {inc}  (ratel explain {inc})");
             last_inc = inc.to_string();
         }
-        println!("{}  {:<6} {}", local_time(t), sev.to_uppercase(), a["title"].as_str().unwrap_or(""));
+        println!("{}  {:<6} {}", local_time(t), sev.to_uppercase(), crate::safety::safe(a["title"].as_str().unwrap_or("")));
         for e in a["evidence"].as_array().into_iter().flatten().take(3) {
-            println!("                       - {}", e.as_str().unwrap_or(""));
+            println!("                       - {}", crate::safety::safe(e.as_str().unwrap_or("")));
         }
     }
     if !kv.contains_key("--json") {
@@ -132,15 +132,15 @@ pub fn explain(args: &[String]) {
     let text = std::fs::read_to_string(&f).unwrap_or_else(|e| die(&format!("{}: {e}", f.display())));
     let lines: Vec<Value> = text.lines().filter_map(|l| serde_json::from_str(l).ok()).collect();
     let head = lines.iter().find(|l| l["type"] == "incident").cloned().unwrap_or(Value::Null);
-    println!("Incident {}  opened {}", head["id"].as_str().unwrap_or(id), head["time"].as_str().unwrap_or("?"));
+    println!("Incident {}  opened {}", head["id"].as_str().unwrap_or(id), crate::safety::safe(head["time"].as_str().unwrap_or("?")));
     println!("\nAlerts:");
     let mut ctx = Value::Null;
     for l in lines.iter().filter(|l| l["type"] == "alert") {
         let a = &l["alert"];
-        println!("  {}  {:<6} {}", local_time(a["t"].as_f64().unwrap_or(0.0)), a["severity"].as_str().unwrap_or("").to_uppercase(),
+        println!("  {}  {:<6} {}", local_time(a["t"].as_f64().unwrap_or(0.0)), crate::safety::safe(a["severity"].as_str().unwrap_or("")).to_uppercase(),
             a["title"].as_str().unwrap_or(""));
         for e in a["evidence"].as_array().into_iter().flatten() {
-            println!("      - {}", e.as_str().unwrap_or(""));
+            println!("      - {}", crate::safety::safe(e.as_str().unwrap_or("")));
         }
         if ctx.is_null() && !a["context"].is_null() {
             ctx = a["context"].clone();
@@ -152,24 +152,24 @@ pub fn explain(args: &[String]) {
         if pr["gone"] == true {
             println!("  pid {} had already exited when the alert fired", pr["pid"]);
         } else {
-            println!("  pid {}  user {}  started {}", pr["pid"], pr["user"].as_str().unwrap_or("?"), pr["started"].as_str().unwrap_or("?"));
-            println!("  exe      {}", pr["exe"].as_str().unwrap_or("?"));
-            println!("  sha256   {}", pr["sha256"].as_str().unwrap_or("?"));
+            println!("  pid {}  user {}  started {}", pr["pid"], crate::safety::safe(pr["user"].as_str().unwrap_or("?")), crate::safety::safe(pr["started"].as_str().unwrap_or("?")));
+            println!("  exe      {}", crate::safety::safe(pr["exe"].as_str().unwrap_or("?")));
+            println!("  sha256   {}", crate::safety::safe(pr["sha256"].as_str().unwrap_or("?")));
             let origin = match pr["origin"]["kind"].as_str() {
-                Some("package") => format!("package {} (unchanged since install)", pr["origin"]["pkg"].as_str().unwrap_or("?")),
-                Some("modified") => format!("MODIFIED file of package {}", pr["origin"]["pkg"].as_str().unwrap_or("?")),
+                Some("package") => format!("package {} (unchanged since install)", crate::safety::safe(pr["origin"]["pkg"].as_str().unwrap_or("?"))),
+                Some("modified") => format!("MODIFIED file of package {}", crate::safety::safe(pr["origin"]["pkg"].as_str().unwrap_or("?"))),
                 Some("allowlisted") => "allowlisted hash".into(),
                 Some("unknown") => "not from any package".into(),
                 _ => "?".into(),
             };
             println!("  origin   {origin}");
-            println!("  cmdline  {}", pr["cmdline"].as_str().unwrap_or("?"));
-            println!("  cwd      {}", pr["cwd"].as_str().unwrap_or("?"));
+            println!("  cmdline  {}", crate::safety::safe(pr["cmdline"].as_str().unwrap_or("?")));
+            println!("  cwd      {}", crate::safety::safe(pr["cwd"].as_str().unwrap_or("?")));
             if let Some(c) = pr["container"].as_str() {
                 println!("  container {c}");
             }
             for (i, par) in pr["parents"].as_array().into_iter().flatten().enumerate() {
-                println!("  {}└ {}", "  ".repeat(i), par.as_str().unwrap_or(""));
+                println!("  {}└ {}", "  ".repeat(i), crate::safety::safe(par.as_str().unwrap_or("")));
             }
         }
     }
@@ -187,7 +187,7 @@ pub fn explain(args: &[String]) {
     }
     let d = &ctx["destination"];
     if !d.is_null() {
-        println!("\nDestination {}{}", d["ip"].as_str().unwrap_or("?"),
+        println!("\nDestination {}{}", crate::safety::safe(d["ip"].as_str().unwrap_or("?")),
             d["dns_name"].as_str().map(|n| format!(" ({n})")).unwrap_or_else(|| " (no DNS lookup returned it)".into()));
         println!("  first contacted by this process: {}; by anything here: {}",
             d["first_seen_by_entity"].as_str().unwrap_or("never before"), d["first_seen_here"].as_str().unwrap_or("never before"));
@@ -216,7 +216,7 @@ pub fn explain(args: &[String]) {
         let t = e["t"].as_f64().unwrap_or(0.0);
         match e["e"].as_str() {
             Some("tcp") | Some("udp") => {
-                let key = format!("{}:{}", e["rip"].as_str().unwrap_or("?"), e["rport"]);
+                let key = format!("{}:{}", crate::safety::safe(e["rip"].as_str().unwrap_or("?")), e["rport"]);
                 let a = per.entry(key).or_insert_with(|| Agg { first: t, ..Default::default() });
                 a.last = t;
                 if e["e"] == "udp" {
@@ -242,7 +242,7 @@ pub fn explain(args: &[String]) {
                 }
             }
             Some("dns") if e["resp"] != true => *dns.entry(e["name"].as_str().unwrap_or("?").to_string()).or_default() += 1,
-            Some("proc") => flags.push(format!("{} {}: {}", local_time(t), e["rule"].as_str().unwrap_or(""), e["detail"].as_str().unwrap_or(""))),
+            Some("proc") => flags.push(format!("{} {}: {}", local_time(t), crate::safety::safe(e["rule"].as_str().unwrap_or("")), crate::safety::safe(e["detail"].as_str().unwrap_or("")))),
             _ => {}
         }
     }
@@ -328,7 +328,7 @@ pub fn status(args: &[String]) {
     let n = |k: &str| al[k].as_u64().unwrap_or(0);
     println!("  alerts since start: {} high, {} medium, {} low", n("high"), n("medium"), n("low"));
     if let Some(l) = v["last_alert"].as_object() {
-        println!("  last alert {} {}", l["time"].as_str().unwrap_or(""), l["title"].as_str().unwrap_or(""));
+        println!("  last alert {} {}", crate::safety::safe(l["time"].as_str().unwrap_or("")), crate::safety::safe(l["title"].as_str().unwrap_or("")));
     }
     if v["notify_failures"].as_u64().unwrap_or(0) > 0 {
         println!("  XMPP notify failures: {} (see syslog)", v["notify_failures"]);

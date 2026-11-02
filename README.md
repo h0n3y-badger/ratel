@@ -292,6 +292,77 @@ Security, because this sits next to a root daemon:
   * The real-traffic sandbox test checks that planted suppressions are
     announced and catch-all wildcards rejected.
 
+### Resisting injected or forged results
+
+ratel runs as root and reads input from unprivileged sources: other users'
+processes, containers, network peers, and the dashboard. None of these should be
+able to plant a result, hide one, or launder an attacker's traffic as normal.
+
+* **Text:** every attacker-chosen string (file names, command lines, DNS names,
+  process names) is escaped before it reaches a terminal, a log line or an XMPP
+  message. This covers control characters, ANSI sequences, bidi overrides,
+  zero-width/tag/variation characters and filler characters. Entity names also
+  escape `\`, so two different programs can never end up with the same name
+  (and so share one baseline).
+* **Files ratel believes:** the config, saved state, allowlists and
+  `feedback.jsonl` are read with `trusted_read`:
+  * symlinks are not followed;
+  * the *opened* file must be owned by root (or ratel's own user) and not be
+    group- or world-writable;
+  * every directory above it, both as written and as resolved, must be
+    trusted.
+
+  An untrusted state file is ignored and raises a high health alert, and an
+  untrusted config is refused. The dashboard's inbox (`feedback.d`) is
+  untrusted by design: reads are capped, FIFOs and symlinks are refused, every
+  suppression is announced, and catch-all wildcards are rejected. Package
+  databases and the scan path are checked the same way. Scans open files with
+  `O_NOFOLLOW`/`O_NONBLOCK` and never follow symlinks while walking.
+* **Kernel data:** netlink replies are accepted only from the kernel
+  (`nl_pid` 0) and matched by sequence number. Exact socket lookups check that
+  the kernel returned the socket that was asked about.
+* **DNS names:** a name is attached to an address only when:
+  * the answer matches a query that was really sent (id, name, port and server;
+    single use, within 10 s); and
+  * that query went to a trusted resolver: one in `/etc/resolv.conf`, a large
+    public resolver, a `resolver =` entry, or the host's own resolver daemon
+    asking upstream (checked by process, not by name).
+
+  A forged answer is dropped and counted. Bursts raise a "possible DNS
+  spoofing" health alert. A program asking its own DNS server gets no names, so
+  that server can't make the attacker's address look like github.com. The
+  sandbox test checks both cases, plus a control run where trusting the rogue
+  server does let the forged name through. Floods can't evict pending queries
+  from the trusted resolver, and evictions never count as spoofing.
+* **Who did it:**
+  * The uid comes from the owner of `/proc/<pid>`, and every non-root user gets
+    their own baselines (`(uid N)`).
+  * Interpreters are named with the full script path. Containers, and
+    processes in a private mount namespace, get their own prefix.
+  * For programs started through the dynamic loader (`ld-musl prog`), the
+    program is taken from `/proc/pid/maps` (ELF objects that request an
+    interpreter) and read through `map_files`. A rewritten argv can't rename
+    it or redirect its scan.
+  * UDP ports are attributed to host sockets before any other network
+    namespace's sockets, so nobody can claim port 53 with `unshare -rn`.
+  * Executable scans are keyed on the file's identity (device, inode, ctime,
+    size), so a binary swapped in at the same path is scanned again.
+* **Poisoning the baseline:**
+  * A high alert freezes that process's learning for an hour: no
+    destinations, no upload volume. Any rise in its "largest normal upload"
+    over the previous hour is undone. Medium alerts only un-learn their own
+    destination, if it was learned in the last hour. A full freeze on medium
+    alerts let one false alarm cascade into more (4× the learning-day false
+    alarms).
+  * When the entity table is full, processes that appeared after learning are
+    evicted first.
+  * Past the per-process alert cap, alerts are still logged and filed, and
+    XMPP reports a count. High alerts bypass the daily XMPP cap.
+* **Self-integrity:** the binary's SHA-256 is kept in the state. A change raises
+  a health alert.
+* **`ignore-dest` takes IP addresses only.** A domain could share a CDN address
+  with any other site.
+
 ### How the network models are trained
 
 `train/net/pipeline.sh` takes about an hour on this desktop with the
@@ -426,6 +497,26 @@ Limits:
   exfiltration by traffic alone. Use `ratel ack <id> --fp` or `ignore =`.
 * **No real exfiltration data:** there's no public labelled dataset for
   exfiltration, so those families are synthetic.
+* **Root can do anything:** none of the tampering defences above stop root.
+  An attacker with root can stop or replace ratel. The binary hash check and
+  XMPP silence (no digest, no heartbeat) are the only tells.
+* **Slow baseline inflation:** a process can raise its own "normal" upload
+  size through hours that don't alert. Capping that growth (4× per day) was
+  tried and dropped. It made busy servers' ordinary growth look abnormal, for
+  four times the false alarms.
+* **LAN and tailnet uploads:** volume rules apply to public destinations only.
+  Treating private and overlay destinations the same way (at 10× the
+  thresholds) flagged ordinary backups to a NAS, at 1.2 false alarms a day, and
+  caught nothing extra in the evaluation.
+* **Packets ratel doesn't parse:** IPv6 extension headers and IPv4 fragments
+  aren't parsed. DNS carried in them isn't seen, and their UDP volume is only
+  counted, not attributed.
+* **UDP attribution is by port:** a sampled UDP packet is attributed to the
+  owner of its local port. Host sockets win over other namespaces, but two
+  containers using the same port can be confused.
+* **DNS from a non-standard resolver:** answers from a resolver that's neither
+  configured nor a big public one carry no names, until it's added with
+  `resolver =`.
 
 ## Telling legitimate software apart
 

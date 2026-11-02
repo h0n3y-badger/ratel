@@ -21,6 +21,8 @@ pub struct Notifier {
     batch: Duration,
     sent_today: (u64, u32),
     pub daily_cap: u32,
+    /// alerts over the per-process cap since the last message (summarised, not dropped)
+    capped: u32,
 }
 
 pub fn sev_rank(s: &str) -> u8 {
@@ -54,7 +56,7 @@ impl Notifier {
         });
         Notifier {
             tx: Some(tx), worker: Some(worker), failed, enabled, min_sev: sev_rank(min_sev).max(1), pending: vec![], first_pending: None, last_sent: None,
-            batch: Duration::from_secs(30), sent_today: (0, 0), daily_cap: 60,
+            batch: Duration::from_secs(30), sent_today: (0, 0), daily_cap: 60, capped: 0,
         }
     }
 
@@ -85,6 +87,10 @@ impl Notifier {
         if !self.enabled || sev_rank(a.severity) < self.min_sev {
             return;
         }
+        if a.capped {
+            self.capped += 1;
+            return;
+        }
         if self.pending.is_empty() {
             self.first_pending = Some(Instant::now());
         }
@@ -106,8 +112,13 @@ impl Notifier {
         }
         let alerts = std::mem::take(&mut self.pending);
         self.first_pending = None;
-        let (subject, body) = render(&alerts);
-        if self.sent_today.1 >= self.daily_cap {
+        let (subject, mut body) = render(&alerts);
+        if self.capped > 0 {
+            body += &format!("(+{} more alerts for processes already reported; see ratel alerts / the dashboard)\n", self.capped);
+            self.capped = 0;
+        }
+        // the daily cap never holds back a high-severity alert (flooding can't hide one)
+        if self.sent_today.1 >= self.daily_cap && !high {
             syslog(&format!("{subject} (daily XMPP cap reached) {}", one_line(&body)));
             return;
         }
@@ -127,23 +138,23 @@ impl Notifier {
 pub fn render(alerts: &[Alert]) -> (String, String) {
     let worst = alerts.iter().max_by_key(|a| sev_rank(a.severity)).unwrap();
     let subject = if alerts.len() == 1 {
-        format!("[{}] {}", worst.severity.to_uppercase(), worst.title)
+        format!("[{}] {}", worst.severity.to_uppercase(), crate::safety::safe(&worst.title))
     } else {
-        format!("[{}] {} (+{} more)", worst.severity.to_uppercase(), worst.title, alerts.len() - 1)
+        format!("[{}] {} (+{} more)", worst.severity.to_uppercase(), crate::safety::safe(&worst.title), alerts.len() - 1)
     };
     let mut body = String::new();
     let mut sorted: Vec<&Alert> = alerts.iter().collect();
     sorted.sort_by_key(|a| std::cmp::Reverse(sev_rank(a.severity)));
     for a in sorted {
-        body += &format!("{} {}\n", a.severity.to_uppercase(), a.title);
+        body += &format!("{} {}\n", a.severity.to_uppercase(), crate::safety::safe(&a.title));
         if a.pid != 0 {
-            body += &format!("  pid {} ({})\n", a.pid, a.entity);
+            body += &format!("  pid {} ({})\n", a.pid, crate::safety::safe(&a.entity));
         }
         if !a.incident.is_empty() {
             body += &format!("  incident {0}: ratel explain {0}\n", a.incident);
         }
         for e in a.evidence.iter().take(5) {
-            body += &format!("  - {e}\n");
+            body += &format!("  - {}\n", crate::safety::safe(e));
         }
         if body.len() > 3500 {
             body += "…more in /var/log/ratel/alerts.jsonl\n";

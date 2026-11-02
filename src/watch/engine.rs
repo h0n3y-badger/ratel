@@ -155,8 +155,9 @@ pub fn dest_class(ip: &IpAddr) -> DestClass {
             let s = v.segments();
             if v.is_loopback() || v.is_unspecified() {
                 DestClass::Local
-            } else if s[0] & 0xfe00 == 0x0200 || (s[0] == 0xfd7a && s[1] == 0x115c) {
-                DestClass::Overlay // Yggdrasil 200::/7, Tailscale fd7a:115c::/32
+            } else if s[0] == 0xfd7a && s[1] == 0x115c {
+                DestClass::Overlay // Tailscale fd7a:115c::/32 (a private tailnet). Yggdrasil
+                                   // 200::/7 is a public mesh anyone can join: treated as public.
             } else if s[0] & 0xfe00 == 0xfc00 || s[0] & 0xffc0 == 0xfe80 || s[0] & 0xff00 == 0xff00 {
                 DestClass::Private
             } else if let Some(v4) = v.to_ipv4_mapped() {
@@ -238,6 +239,17 @@ pub struct Ent {
     max_pair_out: u64,
     #[serde(default)]
     newdest_hours: VecDeque<u32>,
+    /// While set (an alert fired for this entity), nothing it does is learned.
+    #[serde(default)]
+    tainted_until: f64,
+    #[serde(default)]
+    max_pair_t: f64,
+    /// max_pair_out before the current run of increases (restored when a high alert shows
+    /// the increase was the attack itself)
+    #[serde(default)]
+    max_pair_prev: u64,
+    #[serde(default)]
+    cur_tainted: bool,
     #[serde(default)]
     cur_newdests: u32,
     // current hour accumulators
@@ -255,7 +267,19 @@ impl Ent {
     fn roll(&mut self, t: f64) {
         let h = (t / HOUR) as i64;
         if h <= self.cur_hour {
+            if t < self.tainted_until {
+                self.cur_tainted = true;
+            }
             return;
+        }
+        // an hour that contained an alert is not learned (no baseline poisoning)
+        let tainted = self.cur_tainted || t < self.tainted_until;
+        self.cur_tainted = false;
+        if tainted {
+            self.cur_out = 0;
+            self.cur_dests.clear();
+            self.cur_outconns = 0;
+            self.cur_newdests = 0;
         }
         if self.cur_out > 0 || !self.cur_dests.is_empty() {
             self.hours.push_back((self.cur_hour, self.cur_out, self.cur_dests.len() as u32, self.cur_outconns));
@@ -329,6 +353,9 @@ pub struct State {
     pub saved_t: f64,
     #[serde(default)]
     pub last_digest: f64,
+    /// sha256 of the ratel binary that last ran with this state.
+    #[serde(default)]
+    pub exe_sha256: String,
 }
 
 // ---------------------------------------------------------------- volatile state
@@ -396,6 +423,9 @@ pub struct Alert {
     /// Process / destination context captured when the alert fired (live mode).
     #[serde(skip_serializing_if = "serde_json::Value::is_null")]
     pub context: serde_json::Value,
+    /// Over the per-process notification cap: logged and filed, summarised on XMPP.
+    #[serde(skip_serializing_if = "std::ops::Not::not")]
+    pub capped: bool,
 }
 
 pub struct Finding {
@@ -490,8 +520,12 @@ impl Engine {
             return i;
         }
         if self.st.ents.len() >= MAX_ENTS {
-            // reuse the slot of the longest-idle entity
-            let (i, _) = self.st.ents.iter().enumerate().min_by(|a, b| a.1.last_t.partial_cmp(&b.1.last_t).unwrap()).unwrap();
+            // reuse the slot of the longest-idle entity, preferring ones that appeared after the
+            // learning period: flooding with new entities can't evict learned baselines
+            let learned_until = self.st.start_t + self.cfg.learn_hours * HOUR;
+            let pick = |only_new: bool| self.st.ents.iter().enumerate().filter(|(_, e)| !only_new || e.first_t > learned_until)
+                .min_by(|a, b| a.1.last_t.partial_cmp(&b.1.last_t).unwrap()).map(|(i, _)| i);
+            let i = pick(true).or_else(|| pick(false)).unwrap();
             self.ent_idx.remove(&self.st.ents[i].name);
             self.pairs.retain(|k, _| k.0 != i);
             self.conns.retain(|_, c| c.ent != i);
@@ -763,7 +797,9 @@ impl Engine {
 
     fn ignored(&self, ent: &str, dest: &str) -> bool {
         self.cfg.ignore.iter().any(|i| if let Some(p) = i.strip_suffix('*') { ent.starts_with(p) } else { i == ent })
-            || self.cfg.ignore_dest.iter().any(|d| d == dest || dest.ends_with(&format!(".{d}")))
+            // by address only: a DNS name can't widen it (a CDN address shared with the
+            // ignored site would otherwise ignore every other site hosted there)
+            || self.cfg.ignore_dest.iter().any(|d| d == dest.split(' ').next().unwrap_or(""))
     }
 
     fn raise(&mut self, kind: &'static str, entity: String, pid: u32, dest: String, score: f64, fs: Vec<Finding>, title: String) {
@@ -795,15 +831,39 @@ impl Engine {
         let ek = format!("{kind}|{entity}");
         let recent = self.ent_alerts.entry(ek).or_default();
         recent.retain(|(t, _)| self.t - t < self.cfg.cooldown);
-        if recent.len() >= MAX_PER_ENTITY && recent.iter().all(|(_, s)| *s >= sev_n) {
-            return;
+        // Over the cap the alert is still raised (log, incident, dashboard); only its chat
+        // notification is condensed. Spending the cap on decoys hides nothing.
+        let capped = recent.len() >= MAX_PER_ENTITY && recent.iter().all(|(_, s)| *s >= sev_n);
+        if !capped {
+            recent.push((self.t, sev_n));
         }
-        recent.push((self.t, sev_n));
         self.st.cooldown.insert(key, (self.t, sev_n));
+        if sev_n >= 2 {
+            if let Some(&ei) = self.ent_idx.get(&entity) {
+                let e = &mut self.st.ents[ei];
+                // a high alert freezes the process's learning for an hour (medium ones
+                // don't: a false alarm would make the next hour's ordinary traffic "new"
+                // and cascade; measured at 4x the learning-day false alarms)
+                if sev_n >= 3 {
+                    e.tainted_until = self.t + HOUR;
+                    if self.t - e.max_pair_t < HOUR {
+                        e.max_pair_out = e.max_pair_prev;
+                    }
+                }
+                // the destination may have been learned in the minutes *before* the alert
+                // fired: forget it again if it is that recent
+                if let Ok(ip) = d0.parse::<IpAddr>() {
+                    let pk = prefix(&ip);
+                    if e.dests.get(&pk).is_some_and(|f| self.t - f < HOUR) {
+                        e.dests.remove(&pk);
+                    }
+                }
+            }
+        }
         let severity = match sev_n { 3 => "high", 2 => "medium", _ => "low" };
         self.alerts.push(Alert {
             t: self.t, severity, kind, entity, pid, dest, score: (conf * 1000.0).round() / 1000.0, title,
-            evidence: fs.into_iter().map(|f| f.text).collect(), incident: String::new(), context: serde_json::Value::Null,
+            evidence: fs.into_iter().map(|f| f.text).collect(), incident: String::new(), context: serde_json::Value::Null, capped,
         });
     }
 
@@ -889,7 +949,16 @@ impl Engine {
 
         for (ei, o) in pair_max {
             let e = &mut self.st.ents[ei];
-            e.max_pair_out = e.max_pair_out.max(o);
+            if now < e.tainted_until || o <= e.max_pair_out {
+                continue;
+            }
+            // (hours with an alert are never learned; a growth cap here was tried and
+            // turned busy servers' normal growth into false alarms, 4x the FP rate)
+            if now - e.max_pair_t >= HOUR {
+                e.max_pair_prev = e.max_pair_out;
+            }
+            e.max_pair_out = o;
+            e.max_pair_t = now;
         }
         // ---- dns
         let dkeys: Vec<(String, String)> = self.dns.iter().filter(|(_, a)| now - a.last_t < 600.0 && !a.q.is_empty()).map(|(k, _)| k.clone()).collect();
@@ -944,6 +1013,9 @@ impl Engine {
         }
         for (ei, pk, t0, public, named) in fresh {
             let e = &mut self.st.ents[ei];
+            if now < e.tainted_until {
+                continue; // destinations seen during an alert never become "known"
+            }
             if !e.dests.contains_key(&pk) {
                 e.cur_newdests += 1;
                 if public {
@@ -1479,6 +1551,26 @@ mod tests {
         e.tick(7300.0 + 400.0);
         let a = e.drain_alerts();
         assert!(a.iter().any(|a| a.kind == "exfil" && a.dest.starts_with("203.0.113.9")), "{a:?}");
+    }
+
+    #[test]
+    fn alerting_traffic_is_not_learned() {
+        let mut e = Engine::new(Config { learn_hours: 1.0, ..Default::default() }, State::default(), None);
+        e.feed(&Event::Caps { t: 0.0, dns: true, syn: true, udp: true });
+        let mut id = 1;
+        for m in 0..120 {
+            e.feed(&tcp(m as f64 * 60.0 + 1.0, id, "/usr/bin/app", [93, 184, 216, 34], 443, 2_000, 30_000, true));
+            id += 1;
+        }
+        for s in 0..30 {
+            e.feed(&tcp(7300.0 + s as f64 * 10.0, 999, "/usr/bin/app", [203, 0, 113, 9], 8443, (s + 1) * 25_000_000, 50_000, false));
+        }
+        e.tick(7300.0 + 1800.0);
+        assert!(e.drain_alerts().iter().any(|a| a.kind == "exfil" && a.severity == "high"));
+        let ei = e.ent_idx["/usr/bin/app"];
+        let pk = prefix(&"203.0.113.9".parse().unwrap());
+        assert!(!e.st.ents[ei].dests.contains_key(&pk), "exfil destination became 'known'");
+        assert!(e.st.ents[ei].max_pair_out < 100_000_000, "exfil volume became 'normal': {}", e.st.ents[ei].max_pair_out);
     }
 
     #[test]

@@ -212,7 +212,7 @@ pub fn print(p: &Path, r: &Assessment, o: &Opts) {
             if let Some(e) = c.excused_by { tags.push(format!("excused: {e}")); }
             format!("{}({:.2}{})", c.cap, c.conf, tags.iter().map(|t| format!(", {t}")).collect::<String>())
         }).collect();
-    println!("{:<10} {:.2}  {}  [{}]{}", r.verdict.to_uppercase(), r.risk, p.display(),
+    println!("{:<10} {:.2}  {}  [{}]{}", r.verdict.to_uppercase(), r.risk, crate::safety::safe_path(p),
         if det.is_empty() { "-".to_string() } else { det.join(" ") },
         if origin_tag.is_empty() { String::new() } else { format!("  ({origin_tag})") });
     for (n, ev) in &r.roles {
@@ -223,7 +223,7 @@ pub fn print(p: &Path, r: &Assessment, o: &Opts) {
     }
     let limit = if o.explain { usize::MAX } else { 4 };
     for f in r.findings.iter().filter(|f| o.explain || f.strength >= 2).take(limit) {
-        println!("    {:<12} {:<26} {}", f.cap, f.rule, f.evidence);
+        println!("    {:<12} {:<26} {}", f.cap, f.rule, crate::safety::safe(&f.evidence));
     }
 }
 

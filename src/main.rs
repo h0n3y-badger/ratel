@@ -3,6 +3,7 @@ mod indicators;
 mod model;
 mod net;
 mod report;
+mod safety;
 mod trust;
 mod watch;
 mod web;
@@ -116,9 +117,14 @@ fn die(msg: &str) -> ! {
 /// while walking are not.
 fn collect(paths: &[PathBuf], out: &mut Vec<PathBuf>) {
     for p in paths {
-        let md = std::fs::symlink_metadata(p).and_then(|m| if m.is_symlink() { std::fs::metadata(p) } else { Ok(m) });
-        let Ok(md) = md else {
-            eprintln!("ratel: cannot stat {}", p.display());
+        // resolve a symlinked argument once, here, so later opens never follow links
+        let p = &if std::fs::symlink_metadata(p).is_ok_and(|m| m.is_symlink()) {
+            std::fs::canonicalize(p).unwrap_or_else(|_| p.clone())
+        } else {
+            p.clone()
+        };
+        let Ok(md) = std::fs::symlink_metadata(p) else {
+            eprintln!("ratel: cannot stat {}", safety::safe_path(p));
             continue;
         };
         if md.is_dir() {
@@ -168,7 +174,7 @@ impl std::ops::Deref for Bytes {
 /// Like `read_candidate`, but always reads into memory (no mmap).
 pub fn read_candidate_heap(p: &Path, max: u64) -> Option<Bytes> {
     use std::io::Read;
-    let fh = std::fs::File::open(p).ok()?;
+    let fh = open_scan(p)?;
     let md = fh.metadata().ok()?;
     if !md.is_file() || md.len() < 64 || md.len() > max {
         return None;
@@ -181,10 +187,27 @@ pub fn read_candidate_heap(p: &Path, max: u64) -> Option<Bytes> {
     Some(Bytes::Heap(buf))
 }
 
+/// Opens a file for scanning without following symlinks (a file swapped for a link to
+/// /etc/shadow mid-scan isn't read) and without blocking (a file swapped for a FIFO
+/// can't hang the scanner); only regular files pass. /proc/<pid>/exe is a magic link,
+/// so it is the one place links are followed.
+fn open_scan(p: &Path) -> Option<std::fs::File> {
+    use std::os::unix::fs::OpenOptionsExt;
+    let mut flags = libc::O_NONBLOCK | libc::O_CLOEXEC | libc::O_NOCTTY;
+    if !p.starts_with("/proc/") {
+        flags |= libc::O_NOFOLLOW;
+    }
+    let f = std::fs::OpenOptions::new().read(true).custom_flags(flags).open(p).ok()?;
+    if !f.metadata().ok()?.is_file() {
+        return None;
+    }
+    Some(f)
+}
+
 /// Opens a file if it looks like ELF/PE and is under the size cap.
 pub fn read_candidate(p: &Path, max: u64) -> Option<Bytes> {
     use std::io::Read;
-    let mut fh = std::fs::File::open(p).ok()?;
+    let mut fh = open_scan(p)?;
     let md = fh.metadata().ok()?;
     let len = md.len();
     if !md.is_file() || len < 64 || len > max {

