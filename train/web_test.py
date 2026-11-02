@@ -131,6 +131,24 @@ check("ack with session + CSRF + Origin -> ok", s == 200 and json.loads(b).get("
 fb = os.path.join(state, "feedback.d", "web.jsonl")
 check("ack written to feedback inbox", os.path.exists(fb) and '"via":"web"' in open(fb).read())
 
+# --- response control: requests only, validated, into the inbox (the daemon executes)
+H2 = {**auth, "Origin": "http://" + H, "X-Ratel-CSRF": csrf, "Content-Type": "application/json"}
+s, h, b = req("GET", "/api/response", headers=auth)
+check("response view loads", s == 200 and isinstance(json.loads(b), dict), f"{s} {b[:80]}")
+s, h, b = req("POST", "/api/response", body=json.dumps({"action": "policy", "quarantine": "off"}), headers={**auth, "Origin": "http://" + H, "Content-Type": "application/json"})
+check("response request without CSRF -> 403", s == 403)
+for bad in [{"action": "rm -rf"}, {"action": "restore", "id": "../../etc/passwd"}, {"action": "kill", "id": ""},
+            {"action": "policy", "quarantine": "everything"}, {"action": "policy"}, {"action": "restore"}]:
+    s, h, b = req("POST", "/api/response", body=json.dumps(bad), headers=H2)
+    check(f"bad response request refused ({json.dumps(bad)[:40]})", s == 400, str(s))
+s, h, b = req("POST", "/api/response", body=json.dumps({"action": "policy", "quarantine": "signatures", "contain": "off"}), headers=H2)
+check("policy request accepted", s == 200 and json.loads(b).get("ok") is True, f"{s} {b[:80]}")
+s, h, b = req("POST", "/api/response", body=json.dumps({"action": "restore", "id": "20261102T173404Z-275a021bbfb6"}), headers=H2)
+ctl = os.path.join(state, "feedback.d", "control.req")
+lines = [json.loads(l) for l in open(ctl)] if os.path.exists(ctl) else []
+check("requests land in the inbox with ids", s == 200 and len(lines) == 2 and all(len(l["req"]) == 32 for l in lines)
+      and lines[0]["contain"] == "off" and lines[1]["action"] == "restore", str(lines)[:200])
+
 # --- request limits
 s, h, b = req(None, None, raw=b"GET / HTTP/1.1\r\nHost: " + H.encode() + b"\r\nX: " + b"a" * 9000 + b"\r\n\r\n")
 check("oversized headers -> 431", s == 431, str(s))

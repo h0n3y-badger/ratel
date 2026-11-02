@@ -59,11 +59,14 @@ usage: ratel watch [opts]
   --clamav-db DIR      ClamAV databases for the path scans and networked executables
                        (default /var/lib/clamav if present, kept current by freshclam)
   --no-clamav          don't use ClamAV signatures
-  --quarantine MODE    off | signatures (default): move files matching a ClamAV signature
-                       into <state>/quarantine (never package-owned or allowlisted files)
-  --contain MODE       off | signatures (default: freeze processes running a file that
-                       matches a signature) | high (also the processes behind high
-                       network/process alerts)
+  --quarantine MODE    off | signatures (files matching a ClamAV signature) | suspicious
+                       (default: also executables in /tmp, /var/tmp, /dev/shm with 2+ of
+                       anti-debug/anti-VM/obfuscation/packing at >= 0.85, and temp-dir
+                       programs frozen for high alerts). Into <state>/quarantine; never
+                       package-owned or allowlisted files. The dashboard can change it.
+  --contain MODE       off | signatures (default: freeze processes running a matching or
+                       obviously bad file) | high (also the processes behind high
+                       network/process alerts). The dashboard can change it.
   --contain-never EXE  never freeze processes of this executable (repeatable; sshd,
                        tailscaled, init, dockerd, prosody... are protected already)
 ";
@@ -475,6 +478,48 @@ fn resolv_conf(extra: &[IpAddr]) -> (HashSet<IpAddr>, bool) {
     (s, local)
 }
 
+/// Dashboard request ids already executed (root-only, never trusted from elsewhere).
+fn control_ledger(d: &std::path::Path) -> Result<HashSet<String>, String> {
+    let p = d.join("control.ledger");
+    if !p.exists() {
+        return Ok(HashSet::new());
+    }
+    let t = crate::safety::trusted_read_string(&p, 8 << 20)?;
+    Ok(t.lines().map(str::to_string).collect())
+}
+
+fn append_ledger(d: &std::path::Path, rq: &str) {
+    use std::io::Write;
+    use std::os::unix::fs::OpenOptionsExt;
+    if let Ok(mut f) = std::fs::OpenOptions::new().create(true).append(true).mode(0o600).open(d.join("control.ledger")) {
+        let _ = writeln!(f, "{rq}");
+    }
+}
+
+/// <state>/response.json for the dashboard (the vault itself is root-only).
+fn write_response(d: &std::path::Path, response: &respond::Response, results: &std::collections::VecDeque<serde_json::Value>) {
+    let v = response.snapshot(&results.iter().cloned().collect::<Vec<_>>());
+    let (p, tmp) = (d.join("response.json"), d.join("response.json.tmp"));
+    if std::fs::write(&tmp, v.to_string()).is_ok() {
+        let _ = std::fs::rename(&tmp, &p);
+    }
+}
+
+/// Quarantine the executable of a (frozen) process if it runs from a temp directory.
+fn quarantine_running_temp(response: &respond::Response, pid: u32, why: &str) -> Option<String> {
+    let exe = std::fs::read_link(format!("/proc/{pid}/exe")).ok()?;
+    if !respond::in_temp(&exe) {
+        return None;
+    }
+    let (d, seen) = crate::read_any_seen(std::path::Path::new(&format!("/proc/{pid}/exe")), 128 << 20, true)?;
+    use sha2::Digest;
+    let sha = crate::trust::hex(&sha2::Sha256::digest(&d[..]));
+    use std::os::unix::fs::MetadataExt;
+    let same = std::fs::symlink_metadata(&exe).is_ok_and(|m| m.dev() == seen.dev && m.ino() == seen.ino);
+    Some(if same { response.quarantine(&exe, &sha, &None, "behaviour", vec![format!("frozen for: {why}")]) }
+        else { "not quarantined: the executable isn't reachable at its path from here".into() })
+}
+
 fn netns_list() -> HashMap<u64, u32> {
     // network namespace inode -> one pid inside it
     let mut out = HashMap::new();
@@ -641,22 +686,31 @@ fn live(o: &WOpts, cfg: Config, model: crate::model::NetModel) {
                 }
                 let sigs = clam.lock().unwrap_or_else(|e| e.into_inner()).clone().map(|db| db.scan(&d)).unwrap_or_default();
                 crate::report::apply_signatures(&mut r, sigs);
-                if !r.signatures.is_empty() && r.verdict == "malware" && acted.insert((pid, h.sha256)) {
-                    // a running program matches known malware: freeze it, then quarantine the file
+                // known malware (signature), or an "obviously bad" executable running from a
+                // temp directory (strict static rule): freeze it, then quarantine the file
+                let sig_hit = !r.signatures.is_empty() && r.verdict == "malware";
+                let susp = if sig_hit || !response.suspicious_on() || !respond::in_temp(&exe) { None } else { respond::suspicious(&r) };
+                if (sig_hit || susp.is_some()) && acted.insert((pid, h.sha256)) {
                     let sha = crate::trust::hex(&h.sha256);
-                    let mut ev: Vec<String> = r.signatures.iter().map(|s| format!("ClamAV signature {}", crate::safety::safe(s))).collect();
-                    if response.contain_sig {
-                        ev.push(response.contain(pid, start, &format!("runs malware ({})", r.signatures.join(", "))));
+                    let (what, mut ev, detector, reason): (String, Vec<String>, &str, Vec<String>) = match &susp {
+                        None => (format!("ClamAV: {}", crate::safety::safe(&r.signatures.join(", "))),
+                            r.signatures.iter().map(|s| format!("ClamAV signature {}", crate::safety::safe(s))).collect(),
+                            "clamav", r.signatures.iter().map(|n| format!("clamav:{n}")).collect()),
+                        Some(why) => (why.clone(), vec![format!("{why} (strict rule, temp directory)"),
+                            format!("capability scan: {} {:.2}", r.verdict, r.risk)], "static", vec![why.clone()]),
+                    };
+                    if response.contain_sig() {
+                        ev.push(response.contain(pid, start, &format!("runs malware ({what})")));
                     }
                     use std::os::unix::fs::MetadataExt;
                     let same = std::fs::metadata(&p).ok().zip(std::fs::symlink_metadata(&exe).ok())
                         .is_some_and(|(a, b)| a.dev() == b.dev() && a.ino() == b.ino());
-                    ev.push(if same { response.quarantine(&exe, &sha, &r.origin, &r.signatures) }
+                    ev.push(if same { response.quarantine(&exe, &sha, &r.origin, detector, reason) }
                         else { "not quarantined: the file isn't reachable at its path from here (deleted, or another mount namespace)".into() });
                     ev.push(format!("sha256 {sha}"));
                     let _ = alert_tx.send(Alert {
                         t: now(), severity: "high", kind: "process", entity: ent.clone(), pid, dest: String::new(), score: 1.0,
-                        title: format!("running malware: {} (ClamAV: {})", ent, crate::safety::safe(&r.signatures.join(", "))),
+                        title: format!("running malware: {} ({what})", ent),
                         evidence: ev, incident: String::new(), context: serde_json::Value::Null, capped: false,
                     });
                 }
@@ -690,13 +744,13 @@ fn live(o: &WOpts, cfg: Config, model: crate::model::NetModel) {
                         }
                         // act on the file that was read (its inode, its real path), never on
                         // whatever the path names by now
-                        if response.contain_sig && seen.ino != 0 {
+                        if response.contain_sig() && seen.ino != 0 {
                             for pid in respond::Response::running(seen.dev, seen.ino) {
-                                ev.push(response.contain(pid, None, &format!("runs malware ({})", r.signatures.join(", "))));
+                                ev.push(response.contain(pid, crate::contain::start_time(pid), &format!("runs malware ({})", r.signatures.join(", "))));
                             }
                         }
                         ev.push(match &seen.path {
-                            Some(real) => response.quarantine(real, &sha, &r.origin, &r.signatures),
+                            Some(real) => response.quarantine(real, &sha, &r.origin, "clamav", r.signatures.iter().map(|n| format!("clamav:{n}")).collect()),
                             None => "not quarantined: the file's real location is unknown".into(),
                         });
                         ev.push(format!("sha256 {sha}"));
@@ -706,6 +760,27 @@ fn live(o: &WOpts, cfg: Config, model: crate::model::NetModel) {
                             evidence: ev, incident: String::new(), context: serde_json::Value::Null, capped: false,
                         });
                         return;
+                    }
+                    // "obviously bad" executable in a temp directory (strict static rule)
+                    if let (true, Some(real), Some(why)) = (response.suspicious_on(), &seen.path, respond::suspicious(r)) {
+                        if respond::in_temp(real) {
+                            let sha = sha.clone().unwrap_or_default();
+                            let mut ev = vec![format!("{why} (strict rule, temp directory)"), format!("capability scan: {} {:.2}", r.verdict, r.risk)];
+                            ev.extend(r.findings.iter().filter(|f| f.strength >= 2).take(3).map(|f| format!("{} {}: {}", f.cap, f.rule, crate::safety::safe(&f.evidence))));
+                            if response.contain_sig() && seen.ino != 0 {
+                                for pid in respond::Response::running(seen.dev, seen.ino) {
+                                    ev.push(response.contain(pid, crate::contain::start_time(pid), &format!("runs a suspicious binary ({why})")));
+                                }
+                            }
+                            ev.push(response.quarantine(real, &sha, &r.origin, "static", vec![why.clone()]));
+                            ev.push(format!("sha256 {sha}"));
+                            let _ = file_tx.send(Alert {
+                                t: now(), severity: "high", kind: "file", entity: crate::safety::safe_path(p), pid: 0, dest: String::new(), score: r.risk,
+                                title: format!("obviously malicious binary ({why}): {}", crate::safety::safe_path(p)),
+                                evidence: ev, incident: String::new(), context: serde_json::Value::Null, capped: false,
+                            });
+                            return;
+                        }
                     }
                     if r.sig_limited && r.signatures.is_empty() {
                         // crafted to exhaust the matcher before a real signature, or just huge
@@ -746,6 +821,11 @@ fn live(o: &WOpts, cfg: Config, model: crate::model::NetModel) {
     });
     let feedback = state_dir.as_ref().map(std::path::PathBuf::from);
     let mut feedback_mtime = None;
+    // dashboard control requests (feedback.d/control.req) and their results
+    let mut ctl_stamp: Option<(u64, Option<std::time::SystemTime>)> = None;
+    let mut last_ctl = Instant::now();
+    let mut ctl_results: std::collections::VecDeque<serde_json::Value> = Default::default();
+    let mut ctl_warned = false;
     let mut last_status = Instant::now() - Duration::from_secs(3600);
     let mut last_drop_check = Instant::now();
     let mut last_health: HashMap<&'static str, f64> = HashMap::new();
@@ -1073,13 +1153,20 @@ fn live(o: &WOpts, cfg: Config, model: crate::model::NetModel) {
         eng.tick(t);
         for mut a in eng.drain_alerts() {
             // `contain = high`: freeze the process behind a high behaviour alert
-            if response.contain_high && a.severity == "high" && a.pid != 0 && matches!(a.kind, "process" | "exfil" | "beacon") {
+            if response.contain_high() && a.severity == "high" && a.pid != 0 && matches!(a.kind, "process" | "exfil" | "beacon") {
                 // the alert's pid may be minutes old: only if it is still that program
                 let line = match procs.list.iter().find(|x| x.pid == a.pid) {
                     Some(x) if x.ent == a.entity => response.contain(a.pid, crate::contain::start_time(a.pid), &a.title),
                     _ => format!("process not frozen: pid {} is no longer {}", a.pid, a.entity),
                 };
+                let frozen = line.starts_with("process tree frozen");
                 a.evidence.push(line);
+                // behaviour-confirmed: a frozen process running from a temp directory
+                if frozen && response.suspicious_on() {
+                    if let Some(l) = quarantine_running_temp(&response, a.pid, &a.title) {
+                        a.evidence.push(l);
+                    }
+                }
             }
             handle_alert(a, &eng, &mut sink, &mut out, &mut health);
         }
@@ -1088,11 +1175,66 @@ fn live(o: &WOpts, cfg: Config, model: crate::model::NetModel) {
             if eng.st.file_alerted.get(&a.entity) != Some(&sha) {
                 eng.st.file_alerted.insert(a.entity.clone(), sha);
                 handle_alert(a, &eng, &mut sink, &mut out, &mut health);
+                if let Some(d) = &feedback {
+                    write_response(d, &response, &ctl_results);
+                }
+            }
+        }
+        // ---- dashboard control requests (every 2 s): executed once each, announced
+        if let (Some(d), true) = (&feedback, last_ctl.elapsed() >= Duration::from_secs(2)) {
+            last_ctl = Instant::now();
+            let req = d.join("feedback.d").join("control.req");
+            let st = std::fs::metadata(&req).ok().map(|m| (m.len(), m.modified().ok()));
+            if st.is_some() && st != ctl_stamp {
+                ctl_stamp = st;
+                match control_ledger(d) {
+                    Err(e) => {
+                        if !ctl_warned {
+                            ctl_warned = true;
+                            let a = health_alert("control", "high", "dashboard requests ignored: the request ledger is not trusted", vec![e]);
+                            handle_alert(a, &eng, &mut sink, &mut out, &mut health);
+                        }
+                    }
+                    Ok(mut ledger) => {
+                        let body = crate::safety::bounded_read(&req, 1 << 20).unwrap_or_default();
+                        let mut n = 0;
+                        for l in String::from_utf8_lossy(&body).lines() {
+                            let Ok(v) = serde_json::from_str::<serde_json::Value>(l) else { continue };
+                            let Some(rq) = v["req"].as_str().filter(|r| r.len() == 32 && r.bytes().all(|b| b.is_ascii_hexdigit())) else { continue };
+                            if ledger.contains(rq) {
+                                continue;
+                            }
+                            n += 1;
+                            if n > 20 {
+                                break; // the rest next round
+                            }
+                            // into the ledger before acting: a crash can't make it run twice
+                            ledger.insert(rq.to_string());
+                            append_ledger(d, rq);
+                            let (ok, msg, sev) = respond::execute(&response, &v);
+                            ctl_results.push_front(serde_json::json!({"req": rq, "t": now(), "ok": ok, "message": msg,
+                                "action": crate::safety::safe(v["action"].as_str().unwrap_or(""))}));
+                            ctl_results.truncate(50);
+                            if ok {
+                                let a = health_alert("dashboard", sev, &format!("dashboard: {msg}"),
+                                    vec![format!("requested from {} via ratel web", crate::safety::safe(v["ip"].as_str().unwrap_or("?")))]);
+                                handle_alert(a, &eng, &mut sink, &mut out, &mut health);
+                            }
+                        }
+                        if n > 20 {
+                            ctl_stamp = None; // look again next round
+                        }
+                        write_response(d, &response, &ctl_results);
+                    }
+                }
             }
         }
         out.notifier.flush(false);
         // ---- health, status, feedback, digest (every 30 s)
         if last_status.elapsed() >= Duration::from_secs(30) {
+            if let Some(d) = &feedback {
+                write_response(d, &response, &ctl_results);
+            }
             if let Some(db) = clam_now(&clam) {
                 // the Windows signatures are big: keep them only while PE files keep coming
                 db.release_idle_pe(Duration::from_secs(600));
@@ -1199,7 +1341,7 @@ fn live(o: &WOpts, cfg: Config, model: crate::model::NetModel) {
                 incidents::write_status(sp, &health, &eng, serde_json::json!({"open_incidents": open, "suppressions": eng.cfg.suppress.len(),
                     "capture": cap.is_some(), "root": root, "exe_sha256": me_sha, "dns_unsolicited": dnsq.unsolicited,
                     "clamav": clam_now(&clam).map(|d| d.version.clone()), "quarantined": quarantined, "contained": contained,
-                    "response": {"quarantine": response.quarantine, "contain": if response.contain_high { "high" } else if response.contain_sig { "signatures" } else { "off" }}}));
+                    "response": {"quarantine": response.modes().0, "contain": response.modes().1}}));
             }
         }
         if last_save.elapsed() >= Duration::from_secs(600) {

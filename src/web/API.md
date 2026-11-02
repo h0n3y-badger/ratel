@@ -104,3 +104,24 @@ monitor stops alerting on those (entity, destination, kind) within a minute, and
 the new suppression as an alert. Unidentified entities (`unattributed`, `?`, `uid:N`, `host:…`)
 never get a `*` destination; if nothing in the incident can be silenced the answer is
 `422 {"error": "..."}` (mark it reviewed instead).
+
+### `GET /api/response`
+The monitor's `response.json` (written every 30 s and after each action), or `{"missing": true}`:
+```json
+{"updated": 1793600000.0, "quarantine": "suspicious", "contain": "signatures",
+ "quarantine_modes": ["off", "signatures", "suspicious"], "contain_modes": ["off", "signatures", "high"],
+ "available": true, "suspicious_rule": "2+ of anti-debug, ... in /tmp, /var/tmp, /dev/shm, /run/shm",
+ "vault": [ {"id": "20261102T173404Z-275a021bbfb6", "path": "/tmp/x/eicar.com", "sha256": "...", "size": 68,
+             "t": 1793600000.0, "detector": "clamav|static|behaviour", "reason": ["clamav:Eicar-Test-Signature"],
+             "nlink": 1, "uid": 1000} ],
+ "frozen": [ {"id": "20261102T173952Z-25246", "root_pid": 25246, "pids": 1, "alive": 1, "exe": "/tmp/x/pyx",
+              "method": "cgroup|sigstop", "t": 1793600000.0, "reason": "runs malware (...)"} ],
+ "results": [ {"req": "<32 hex>", "t": ..., "action": "restore", "ok": true, "message": "restored ..."} ]}
+```
+
+### `POST /api/response` (JSON body, CSRF header required)
+`{"action": "restore|delete|release|kill", "id": "<vault or containment id>"}` or
+`{"action": "policy", "quarantine": "off|signatures|suspicious", "contain": "off|signatures|high"}`
+(either mode may be left out) → `{"ok": true, "req": "<32 hex>"}`. This only queues the request
+(`feedback.d/control.req`); the root monitor runs it within ~2 s, announces it, and its outcome
+appears in `results`. Bad actions, ids or modes → `400`.

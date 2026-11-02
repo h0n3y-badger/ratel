@@ -668,6 +668,9 @@ fn route(sh: &Shared, r: &Req) -> Result<Resp, u16> {
         ("GET", "/api/alerts") => Ok(json_resp(200, api_alerts(sh, r))),
         ("GET", "/api/incidents") => Ok(json_resp(200, api_incidents(sh, r))),
         ("GET", p) if p.starts_with("/api/incident/") => api_incident(sh, &p["/api/incident/".len()..]).map(|v| json_resp(200, v)),
+        ("GET", "/api/response") => Ok(json_resp(200, read_json(&sh.cfg.state.join("response.json"), 8 << 20)
+            .unwrap_or_else(|| json!({"missing": true})))),
+        ("POST", "/api/response") => api_response(sh, r).map(|v| json_resp(200, v)),
         ("POST", "/api/ack") => match api_ack(sh, r) {
             Err(422) => Ok(json_resp(422, json!({"error": "these alerts come from unidentified processes (or have no concrete destination), so they can't be silenced; mark the incident reviewed instead"}))),
             other => other.map(|v| json_resp(200, v)),
@@ -945,6 +948,56 @@ fn api_incident(sh: &Shared, id: &str) -> Result<Value, u16> {
         },
         "ack": ack_map(sh).get(id).cloned().unwrap_or(Value::Null),
     }))
+}
+
+/// Response control (quarantine / containment). The dashboard only *requests*: the
+/// root daemon executes each request once, announces it on XMPP, and reports the
+/// result in response.json. Requests are validated here and again there.
+fn api_response(sh: &Shared, r: &Req) -> Result<Value, u16> {
+    let v: Value = serde_json::from_slice(&r.body).map_err(|_| 400u16)?;
+    let action = v["action"].as_str().ok_or(400u16)?;
+    let mut rec = json!({"t": now(), "action": action, "via": "web", "ip": r.peer.to_string()});
+    match action {
+        "restore" | "delete" | "release" | "kill" => {
+            let id = v["id"].as_str().ok_or(400u16)?;
+            if id.is_empty() || id.len() > 64 || !id.bytes().all(|b| b.is_ascii_alphanumeric() || b == b'-') {
+                return Err(400);
+            }
+            rec["id"] = id.into();
+        }
+        "policy" => {
+            let q = v["quarantine"].as_str();
+            let c = v["contain"].as_str();
+            if q.is_none() && c.is_none()
+                || q.is_some_and(|m| !crate::watch::respond::Q_MODES.contains(&m))
+                || c.is_some_and(|m| !crate::watch::respond::C_MODES.contains(&m))
+            {
+                return Err(400);
+            }
+            if let Some(q) = q {
+                rec["quarantine"] = q.into();
+            }
+            if let Some(c) = c {
+                rec["contain"] = c.into();
+            }
+        }
+        _ => return Err(400),
+    }
+    let req = hex(&sandbox::random_bytes::<16>());
+    rec["req"] = req.clone().into();
+    let dir = sh.cfg.state.join("feedback.d");
+    let path = dir.join("control.req");
+    // bounded: rotate rather than grow forever (the daemon's ledger makes this safe)
+    if std::fs::metadata(&path).is_ok_and(|m| m.len() > 256 << 10) {
+        let _ = std::fs::rename(&path, dir.join("control.req.old"));
+    }
+    let mut f = std::fs::OpenOptions::new().create(true).append(true).open(&path).map_err(|e| {
+        audit(&format!("response request failed: {e}"));
+        500u16
+    })?;
+    writeln!(f, "{rec}").map_err(|_| 500u16)?;
+    audit(&format!("response request {action} {} from {}", clean(&rec.to_string(), 200), r.peer));
+    Ok(json!({"ok": true, "req": req}))
 }
 
 fn api_ack(sh: &Shared, r: &Req) -> Result<Value, u16> {

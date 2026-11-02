@@ -248,3 +248,8 @@ code.block { display: block; white-space: pre-wrap; word-break: break-all; backg
 }
 .entline { margin: 0 0 8px; overflow-wrap: anywhere; }
 .stack > p { margin: 0; }
+/* response page */
+.tag.ok { color: var(--ok); border-color: var(--ok); }
+.tag.hi { color: var(--hi); border-color: var(--hi); }
+.sel { font: inherit; padding: 4px 6px; border: 1px solid var(--line); border-radius: 6px; background: var(--bg); color: var(--fg); max-width: 100%; }
+.actions { display: flex; gap: 6px; flex-wrap: wrap; align-items: center; margin-top: 6px; }

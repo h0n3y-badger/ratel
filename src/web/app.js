@@ -468,11 +468,11 @@
   }
 
   // ----- incident detail -----
-  const ui = { confirm: false, posting: false, note: null, expanded: {} };
+  const ui = { confirm: false, posting: false, note: null, expanded: {}, policyDirty: false };
   const ackResults = {};
   function busy() {
     const n = ui.note;
-    return ui.posting || ui.confirm ||
+    return ui.posting || ui.confirm || ui.policyDirty ||
       !!(n && n.isConnected && (document.activeElement === n || n.value.trim() !== ''));
   }
   function originNode(o) {
@@ -710,7 +710,108 @@
   }
 
   // ---------- routing + refresh loop ----------
-  const VIEWS = { overview: vOverview, live: vLive, alerts: vAlerts, incidents: vIncidents, incident: vIncident };
+  // ---------- response: quarantine vault, frozen processes, policy ----------
+  // The dashboard only requests; the root monitor executes each request once (within
+  // a few seconds), announces it on XMPP and reports the outcome under "Recent actions".
+  const MODE_TEXT = {
+    quarantine: {
+      off: 'never move files automatically',
+      signatures: 'files matching a ClamAV signature',
+      suspicious: 'signature matches, plus obviously bad executables in temp directories',
+    },
+    contain: {
+      off: 'never freeze processes automatically',
+      signatures: 'processes running a matching or obviously bad file',
+      high: 'also the processes behind high network / process alerts',
+    },
+  };
+  async function sendResponse(body, label, btn) {
+    if (btn) btn.disabled = true;
+    ui.posting = true;
+    try {
+      await post('/api/response', body);
+      banner(label + ': sent. The monitor carries it out within a few seconds and announces it.');
+    } catch (e) {
+      if (e instanceof AuthError) throw e;
+      banner(label + ' failed: ' + (e && e.message ? e.message : 'network error'));
+      if (btn) btn.disabled = false;
+    } finally {
+      ui.posting = false;
+    }
+    setTimeout(() => { if (!busy()) refresh(); }, 3000);
+  }
+  function actionBtn(text, cls, question, body, label) {
+    const b = el('button', { type: 'button', class: 'btn small' + (cls ? ' ' + cls : '') }, text);
+    b.addEventListener('click', () => { if (window.confirm(question)) sendResponse(body, label, b); });
+    return b;
+  }
+  function modeSelect(kind, modes, current) {
+    const sel = el('select', { class: 'sel', 'aria-label': kind + ' mode' },
+      (modes || []).map((m) => el('option', { value: m, selected: m === current }, m)));
+    const desc = el('div', { class: 'small muted' }, MODE_TEXT[kind][current] || '');
+    sel.addEventListener('change', () => { ui.policyDirty = true; desc.textContent = MODE_TEXT[kind][sel.value] || ''; });
+    return { sel, node: el('div', null, sel, desc) };
+  }
+  async function vResponse() {
+    const d = await api('/api/response');
+    if (!d || d.missing) {
+      return card('Response', el('p', { class: 'empty' }, 'No response data yet: is ratel watch running (with a state directory)?'));
+    }
+    const qm = d.quarantine_modes || [], cm = d.contain_modes || [];
+    const qs = modeSelect('quarantine', qm, d.quarantine), cs = modeSelect('contain', cm, d.contain);
+    const qsel = qs.sel, csel = cs.sel;
+    const apply = el('button', { type: 'button', class: 'btn' }, 'Apply');
+    const revert = el('button', { type: 'button', class: 'linkbtn small' }, 'discard changes');
+    revert.addEventListener('click', () => { ui.policyDirty = false; refresh(); });
+    apply.addEventListener('click', () => {
+      const weaker = qm.indexOf(qsel.value) < qm.indexOf(d.quarantine) || cm.indexOf(csel.value) < cm.indexOf(d.contain);
+      if (qsel.value === d.quarantine && csel.value === d.contain) { ui.policyDirty = false; return; }
+      if (weaker && !window.confirm('This turns automatic protection down. It is announced as a high alert. Continue?')) return;
+      ui.policyDirty = false;
+      sendResponse({ action: 'policy', quarantine: qsel.value, contain: csel.value }, 'Policy change', apply);
+    });
+    const policy = card('Automatic response',
+      d.available === false ? el('p', { class: 'bad' }, 'The monitor has no state directory: automatic response is unavailable.') : null,
+      kv([['Quarantine', qs.node], ['Freeze processes', cs.node]]),
+      el('p', { class: 'small muted' }, 'Obviously bad = ' + str(d.suspicious_rule) +
+        '. Package-owned and allowlisted files are never moved automatically; sshd, tailscaled, init and other core services are never frozen.'),
+      el('div', { class: 'actions' }, apply, revert),
+      el('p', { class: 'small muted' }, 'updated ' + ago(d.updated)));
+    const vault = card('Quarantine vault (' + num((d.vault || []).length) + ')',
+      table([
+        { h: 'When', f: (r) => when(r.t) },
+        { h: 'File', cls: 'lead', f: (r) => mono(r.path) },
+        { h: 'Why', f: (r) => join((r.reason || []).map((x) => str(x)), ', ') },
+        { h: 'Size', f: (r) => bytes(r.size) },
+        { h: 'sha256', f: (r) => hashNode(r.sha256) },
+        { h: '', f: (r) => el('div', { class: 'actions' },
+          actionBtn('Restore', '', 'Restore ' + r.path + ' to where it was? Its content is then treated as a false positive and not quarantined again.',
+            { action: 'restore', id: r.id }, 'Restore'),
+          actionBtn('Delete', 'dangerbtn', 'Delete the quarantined copy of ' + r.path + ' for good? This cannot be undone.',
+            { action: 'delete', id: r.id }, 'Delete')) },
+      ], d.vault, 'Nothing in quarantine.'));
+    const frozen = card('Frozen processes (' + num((d.frozen || []).length) + ')',
+      table([
+        { h: 'When', f: (r) => when(r.t) },
+        { h: 'Program', cls: 'lead', f: (r) => mono(r.exe) },
+        { h: 'Processes', f: (r) => num(r.alive) + ' of ' + num(r.pids) + ' alive' + (r.alive === 0 ? '' : '') },
+        { h: 'Method', f: (r) => r.method === 'cgroup' ? 'cgroup freezer' : tag('SIGSTOP', 'warnt') },
+        { h: 'Why', f: (r) => str(r.reason) },
+        { h: '', f: (r) => el('div', { class: 'actions' },
+          actionBtn('Release', '', 'Let ' + r.exe + ' (pid ' + r.root_pid + ') run again?', { action: 'release', id: r.id }, 'Release'),
+          actionBtn('Kill', 'dangerbtn', 'Kill the frozen process tree of ' + r.exe + ' (pid ' + r.root_pid + ')?', { action: 'kill', id: r.id }, 'Kill')) },
+      ], d.frozen, 'No frozen processes.'));
+    const results = card('Recent actions',
+      table([
+        { h: 'When', f: (r) => when(r.t) },
+        { h: 'Action', f: (r) => str(r.action) },
+        { h: 'Result', f: (r) => r.ok ? tag('done', 'ok') : tag('failed', 'hi') },
+        { h: 'Details', cls: 'lead', f: (r) => str(r.message) },
+      ], d.results, 'No dashboard actions since the monitor started.'));
+    return el('div', { class: 'stack' }, policy, vault, frozen, results);
+  }
+
+  const VIEWS = { overview: vOverview, live: vLive, alerts: vAlerts, incidents: vIncidents, incident: vIncident, response: vResponse };
   function parseHash() {
     let h = location.hash.replace(/^#\/?/, '');
     let q = '';
@@ -776,7 +877,7 @@
     });
     $('updated').addEventListener('click', () => { if (!busy()) refresh(); });
     window.addEventListener('hashchange', () => {
-      ui.confirm = false; ui.posting = false; ui.note = null;
+      ui.confirm = false; ui.posting = false; ui.note = null; ui.policyDirty = false;
       refresh();
     });
     document.addEventListener('visibilitychange', () => {

@@ -62,6 +62,7 @@ const ACCESS_FS_EXECUTE: u64 = 1 << 0;
 const ACCESS_FS_WRITE_FILE: u64 = 1 << 1;
 const ACCESS_FS_READ_FILE: u64 = 1 << 2;
 const ACCESS_FS_READ_DIR: u64 = 1 << 3;
+const ACCESS_FS_REMOVE_FILE: u64 = 1 << 5;
 const ACCESS_FS_MAKE_REG: u64 = 1 << 8;
 const ACCESS_FS_RESOLVE_UNIX: u64 = 1 << 16;
 const ACCESS_NET_BIND_TCP: u64 = 1 << 0;
@@ -166,7 +167,8 @@ pub fn landlock(r: &Rules) -> Result<String, String> {
             add(d, ACCESS_FS_READ_FILE | ACCESS_FS_READ_DIR)?;
         }
         for d in &r.write_dirs {
-            add(d, ACCESS_FS_READ_FILE | ACCESS_FS_READ_DIR | ACCESS_FS_WRITE_FILE | ACCESS_FS_MAKE_REG)?;
+            // REMOVE_FILE: rotating its own request file (a rename within the inbox)
+            add(d, ACCESS_FS_READ_FILE | ACCESS_FS_READ_DIR | ACCESS_FS_WRITE_FILE | ACCESS_FS_MAKE_REG | ACCESS_FS_REMOVE_FILE)?;
         }
         let _ = ACCESS_FS_EXECUTE;
         if libc::syscall(libc::SYS_landlock_restrict_self, ruleset.as_raw_fd(), 0u32) != 0 {

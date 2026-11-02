@@ -513,11 +513,8 @@ fn main() {
             let mut worst = 0.0f64;
             let clam = load_clamav(&o);
             let cfg = ScanCfg { heap: false, jobs: o.jobs, max, allow: o.allow.clone(), integrity: o.integrity, pkg_trust: !o.no_pkg_trust, clam };
-            let qr = o.quarantine.then(|| watch::respond::Response {
-                quarantine: true, contain_sig: false, contain_high: false,
-                store: Some(o.quarantine_store.clone().unwrap_or_else(|| quarantine::DEFAULT_STORE.into()).into()),
-                state: None, policy: contain::Policy::server_default(),
-            });
+            let qr = o.quarantine.then(|| watch::respond::Response::manual(
+                o.quarantine_store.clone().unwrap_or_else(|| quarantine::DEFAULT_STORE.into()).into()));
             if o.quarantine && cfg.clam.is_none() {
                 die("--quarantine needs ClamAV signatures (only signature matches are quarantined)");
             }
@@ -527,7 +524,8 @@ fn main() {
                 if let (Some(q), Some(sha), "malware") = (&qr, &seen.sha256, r.verdict) {
                     if !r.signatures.is_empty() {
                         let at = seen.path.as_deref().unwrap_or(p);
-                        eprintln!("    {:<12} {}", "quarantine", q.quarantine(at, sha, &r.origin, &r.signatures));
+                        eprintln!("    {:<12} {}", "quarantine", q.quarantine(at, sha, &r.origin, "clamav",
+                            r.signatures.iter().map(|n| format!("clamav:{n}")).collect()));
                     }
                 }
             }).unwrap_or_else(|e| die(&e));

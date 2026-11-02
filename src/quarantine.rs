@@ -532,6 +532,22 @@ fn decode(data: &Path, id: &str, size: u64, mut sink: impl FnMut(&[u8]) -> std::
 /// sha256, with mode/owner/mtime restored, then removes the vault entry. Never follows a
 /// symlink at the target; an existing target is only replaced with `force` (atomically,
 /// by rename, so a symlink there is replaced, not followed).
+const RESTORED: &str = "restored.sha256";
+
+fn mark_restored(store: &Path, sha: &str) {
+    use std::io::Write;
+    use std::os::unix::fs::OpenOptionsExt;
+    if let Ok(mut f) = std::fs::OpenOptions::new().create(true).append(true).mode(0o600).open(store.join(RESTORED)) {
+        let _ = writeln!(f, "{sha}");
+    }
+}
+
+/// Was content with this sha256 restored from the vault before (by the CLI or the
+/// dashboard)? Then automatic quarantine leaves it alone.
+pub fn was_restored(store: &Path, sha: &str) -> bool {
+    crate::safety::trusted_read_string(&store.join(RESTORED), 4 << 20).is_ok_and(|t| t.lines().any(|l| l.trim() == sha))
+}
+
 pub fn restore(store: &Path, id: &str, to: Option<&Path>, force: bool) -> Result<PathBuf, String> {
     let (store, item) = entry(store, id)?;
     let item_dir = store.join(id);
@@ -617,6 +633,8 @@ pub fn restore(store: &Path, id: &str, to: Option<&Path>, force: bool) -> Result
         let _ = unlink_at(&dir, &tmp);
     }
     let _ = dir.fd.sync_all();
+    // remember it: a restore means "false positive", so the same content isn't moved again
+    mark_restored(&store, &item.sha256);
     std::fs::remove_dir_all(&item_dir).map_err(|e| format!("restored, but the vault entry could not be removed: {e}"))?;
     fsync_dir(&store);
     Ok(full)

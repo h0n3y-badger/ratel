@@ -134,7 +134,7 @@ class Handler(BaseHTTPRequestHandler):
             return self.json(404, {"error": "not found"})
 
     def api_get(self, path, q):
-        simple = {"/api/status": "status.json", "/api/live": "live.json",
+        simple = {"/api/status": "status.json", "/api/live": "live.json", "/api/response": "response.json",
                   "/api/session": "session.json"}
         if path in simple:
             return self.json(200, load(simple[path]))
@@ -181,6 +181,12 @@ class Handler(BaseHTTPRequestHandler):
                 return self.json(403, {"error": "csrf"})
             return self.json(200, {"ok": True}, {
                 "Set-Cookie": "ratel_session=; Max-Age=0; HttpOnly; SameSite=Strict; Path=/"})
+        if path == "/api/response":
+            if not self.logged_in():
+                return self.json(401, {"error": "login"})
+            if not self.csrf_ok():
+                return self.json(403, {"error": "csrf"})
+            return self.json(200, {"ok": True, "req": "0" * 32})
         if path == "/api/ack":
             if not self.logged_in():
                 return self.json(401, {"error": "login"})

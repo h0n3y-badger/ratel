@@ -628,12 +628,62 @@ Files go into `/var/lib/ratel/quarantine/<id>/`, root-only.
 
 ### What `ratel watch` does on its own
 
-| Detection | Default response |
+| Detection | Default response (`quarantine = suspicious`, `contain = signatures`) |
 |---|---|
 | A file in a `scan-path` matches a signature | freeze processes running it, then quarantine it |
 | A running networked program's executable matches a signature | freeze its process tree, then quarantine the executable |
-| High behaviour alerts (exfil, beacon, reverse shell...) | nothing (`contain = high` to freeze) |
-| Capability scanner "high" | alert only |
+| An "obviously bad" executable in `/tmp`, `/var/tmp` or `/dev/shm` (scanned, or running and networked) | freeze, then quarantine |
+| High behaviour alerts (exfil, beacon, reverse shell...) | nothing (`contain = high` freezes them, and then quarantines the executable if it runs from a temp dir) |
+| Capability scanner "high" anywhere else | alert only |
+
+**"Obviously bad"** is a deliberately strict rule on the capability scanner.
+
+* **The rule:** two or more of anti-debugging, anti-VM, obfuscation and
+  packing, each at confidence ≥ 0.85, with no legitimate role (hypervisor,
+  debugger, DRM...) that explains them.
+* **Measured on known-good files:**
+  * 0 of 5,791 system and Alpine binaries match.
+  * 3 of 2,232 unpackaged legitimate programs match: a DRM-protected game,
+    VirtualBox and qemu. None of those live in a temp directory, which is the
+    only place the rule acts.
+* **Measured on synthetic samples:** it catches about 20% of samples with two
+  or more evasion techniques and about 35% of those with three or more.
+* **Why so strict:** the capability scanner was never trained on real
+  malware, so a looser threshold (≥ 0.5) catches twice as much but would match
+  25 of the legitimate programs.
+
+**Modes:**
+
+* `quarantine`:
+  * `off`;
+  * `signatures` (signature matches);
+  * `suspicious` (the default: signatures plus the strict rule).
+* `contain`:
+  * `off`;
+  * `signatures` (the default: processes running a matching or obviously bad
+    file);
+  * `high` (also behaviour alerts).
+
+Set them in `watch.conf` or on the dashboard's **Response** page. A choice made
+on the dashboard is kept across restarts, in a root-only
+`response-policy.json`, until it is changed again.
+
+**The Response page (`ratel web`)** shows the vault, the frozen process trees
+and the policy.
+
+* **Actions:** **Restore** or **Delete** a quarantined file, **Release** or
+  **Kill** a frozen tree, and change either mode.
+* **How a request is carried out:**
+  * The dashboard stays unprivileged and only *requests*: it appends to
+    `feedback.d/control.req`, its own inbox.
+  * The root monitor validates each request again and runs it once (a
+    root-only ledger of request ids). It reports the outcome under "Recent
+    actions" and announces it on XMPP.
+  * Restoring or releasing, and turning either mode down, are announced as
+    high alerts.
+  * A compromised dashboard can do only these actions, and never quietly.
+* **Restored files stay restored:** a restored file's hash is remembered, so
+  its content isn't quarantined again.
 
 * **No automatic moves for package files:** a file that belongs to a package
   (even a modified one) or is allowlisted is never moved automatically. A

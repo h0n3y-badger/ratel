@@ -178,6 +178,31 @@ for i in range(12):
     except OSError: pass
     time.sleep(5.5)
 
+# ---- dashboard control, as `ratel web` writes it: restore the quarantined EICAR file
+# and turn containment off; the daemon must run each once, announce it, report it
+def response_json():
+    try: return json.load(open(state + "/response.json"))
+    except (OSError, ValueError): return {}
+for _ in range(30):
+    vault = response_json().get("vault", [])
+    if any(v["path"].endswith("eicar.com") for v in vault): break
+    time.sleep(1)
+eid = next((v["id"] for v in vault if v["path"].endswith("eicar.com")), None)
+import secrets
+with open(state + "/feedback.d/control.req", "a") as fh:
+    if eid: fh.write(json.dumps({"req": secrets.token_hex(16), "action": "restore", "id": eid, "via": "web", "ip": "127.0.0.1"}) + "\n")
+    fh.write(json.dumps({"req": secrets.token_hex(16), "action": "policy", "contain": "off", "via": "web", "ip": "127.0.0.1"}) + "\n")
+    fh.write("not json\n" + json.dumps({"req": "short", "action": "kill", "id": "x"}) + "\n")
+for _ in range(20):
+    rj = response_json()
+    if len(rj.get("results", [])) >= 2: break
+    time.sleep(1)
+rj = response_json()
+res = rj.get("results", [])
+ctl_ok = (len(res) == 2 and all(r["ok"] for r in res) and rj.get("contain") == "off"
+          and os.path.exists(SCAN + "/eicar.com") and open(SCAN + "/eicar.com", "rb").read() == EICAR)
+print("dashboard control: restore + policy executed", ctl_ok, [(r["action"], r["ok"], r["message"][:70]) for r in res])
+
 time.sleep(30)
 st = subprocess.run([RATEL, "status", "--state", state], capture_output=True, text=True)
 print("--- ratel status (while running):\n" + st.stdout + st.stderr)
@@ -209,11 +234,18 @@ want = {"exfil", "dns", "process", "icmp", "scan", "beacon", "file", "health"}
 # frozen (SIGSTOP here: no cgroup delegation in a user namespace) and quarantined
 fa = [a for a in alerts if a["kind"] == "file" and "ClamAV: Eicar" in a["title"]]
 ra = [a for a in alerts if "running malware" in a["title"]]
-eicar_q = bool(fa) and any(e.startswith("quarantined as") for e in fa[0]["evidence"]) and not os.path.exists(SCAN + "/eicar.com")
 mal_frozen = bool(ra) and any(e.startswith("process tree frozen") for e in ra[0]["evidence"])
 mal_q = bool(ra) and any(e.startswith("quarantined as") for e in ra[0]["evidence"]) and not os.path.exists(PYX)
-print("signature response: EICAR quarantined", eicar_q, "| running malware frozen", mal_frozen, "and quarantined", mal_q)
-for a in fa[:1] + ra[:1]:
+# EICAR is back (restored from the dashboard), so check the alert said it was quarantined
+eicar_q = bool(fa) and any(e.startswith("quarantined as") for e in fa[0]["evidence"])
+sus = [a for a in alerts if "obviously malicious binary" in a["title"]]
+sus_q = bool(sus) and any(e.startswith("quarantined as") for e in sus[0]["evidence"]) and not os.path.exists(SCAN + "/dropper")
+print("signature response: EICAR quarantined", eicar_q, "| running malware frozen", mal_frozen, "and quarantined", mal_q,
+      "| obviously bad binary quarantined", sus_q)
+dash = [a for a in alerts if a["kind"] == "health" and a["title"].startswith("dashboard:")]
+print("dashboard actions announced:", [a["title"][:80] for a in dash])
+ctl_ok = ctl_ok and len(dash) == 2
+for a in fa[:1] + ra[:1] + sus[:1]:
     print("   ", a["title"]); [print("       -", e) for e in a["evidence"]]
 try: mal.kill()
 except Exception: pass
@@ -229,4 +261,4 @@ spoof_ok = bool(exf_alert) and "github" not in exf_alert[0]["dest"] and any("no 
 print("forged DNS answer ignored:", spoof_ok, exf_alert[0]["dest"] if exf_alert else None)
 bad = [a for a in alerts if WEB in a["dest"] or "example.org" in a["dest"]]
 print("missing:", sorted(want - kinds) or "none", "| false alerts on benign:", len(bad))
-sys.exit(0 if want <= kinds and not bad and received and exf and announced and rejected and spoof_ok and eicar_q and mal_frozen and mal_q else 1)
+sys.exit(0 if want <= kinds and not bad and received and exf and announced and rejected and spoof_ok and eicar_q and mal_frozen and mal_q and sus_q and ctl_ok else 1)
