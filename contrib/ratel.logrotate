@@ -1,4 +1,4 @@
-/var/log/ratel/*.jsonl /var/log/ratel/watch.log /var/log/ratel/web.log {
+/var/log/ratel/*.jsonl /var/log/ratel/watch.log /var/log/ratel/web.log /var/log/ratel/tls.log {
 	weekly
 	rotate 8
 	compress

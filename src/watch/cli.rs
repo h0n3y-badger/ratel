@@ -336,7 +336,7 @@ pub fn status(args: &[String]) {
     }
     if x["quarantined"].is_u64() || x["contained"].is_u64() {
         println!("  response: quarantine {}, contain {}; {} file(s) in quarantine, {} process tree(s) frozen",
-            if x["response"]["quarantine"] == true { "on" } else { "off" }, crate::safety::safe(x["response"]["contain"].as_str().unwrap_or("off")),
+            crate::safety::safe(x["response"]["quarantine"].as_str().unwrap_or("off")), crate::safety::safe(x["response"]["contain"].as_str().unwrap_or("off")),
             x["quarantined"].as_u64().unwrap_or(0), x["contained"].as_u64().unwrap_or(0));
     }
     if v["notify_failures"].as_u64().unwrap_or(0) > 0 {

@@ -382,22 +382,24 @@ impl M<'_> {
                     return false;
                 }
                 let hi = if b == INF { d.len() } else { pos.saturating_add(b as usize).min(d.len()) };
-                // jump straight to occurrences of the next fixed run (substring search:
-                // searching for its first byte alone burns the budget on common bytes)
-                if next < c.len() && c[next] == RUN && !self.nc {
-                    let run = &c[next + 2..next + 2 + c[next + 1] as usize];
-                    let end = (hi + run.len()).min(d.len());
-                    let mut s = lo;
-                    while s <= hi && s < end {
-                        match memchr::memmem::find(&d[s..end], run) {
-                            Some(k) => {
-                                if self.fwd(c, next, s + k, fin) {
+                // jump straight to occurrences of the first fixed run after the gap, at a
+                // fixed distance k behind fixed-length tokens (bytes, equal alternatives):
+                // stepping through every position burns the budget on large files
+                if let Some((k, run)) = lead_run(c, next) {
+                    let n = run.len();
+                    let end = hi.saturating_add(k + n).min(d.len());
+                    let mut q = lo + k; // where the run may start
+                    while q < end {
+                        match find_run(&d[q..end], &run, self.nc) {
+                            Some(j) => {
+                                let at = q + j - k; // gap end
+                                if at >= lo && at <= hi && self.fwd(c, next, at, fin) {
                                     return true;
                                 }
                                 if self.budget == 0 {
                                     return false;
                                 }
-                                s += k + 1;
+                                q += j + 1;
                             }
                             None => break,
                         }
@@ -490,18 +492,19 @@ impl M<'_> {
         }
         let hi = pos - a;
         let lo = if b == INF { 0 } else { pos.saturating_sub(b as usize) };
-        // jump straight to occurrences of the previous fixed run, which must end at a
-        // candidate position s in lo..=hi (the run is stored reversed)
-        if next < c.len() && c[next] == RUN && !self.nc && hi > 0 {
-            let n = c[next + 1] as usize;
-            let run: Vec<u8> = c[next + 2..next + 2 + n].iter().rev().copied().collect();
-            let base = lo.saturating_sub(n);
-            let mut e = hi;
-            while e > base {
-                match memchr::memmem::rfind(&d[base..e], &run) {
+        // jump straight to occurrences of the first fixed run before the gap (reversed
+        // code: k fixed-length bytes, then the run, going left), which must end k bytes
+        // before a candidate position s in lo..=hi
+        if let Some((k, rrun)) = lead_run(c, next) {
+            let run: Vec<u8> = rrun.iter().rev().copied().collect();
+            let n = run.len();
+            let base = lo.saturating_sub(k + n);
+            let mut e = hi.saturating_sub(k); // the run ends at or before this
+            while e > base && e >= n {
+                match rfind_run(&d[base..e], &run, self.nc) {
                     Some(j) => {
-                        let at = base + j + n;
-                        if at >= lo && self.bwd(c, next, at, fin) {
+                        let at = base + j + n + k;
+                        if at >= lo && at <= hi && self.bwd(c, next, at, fin) {
                             return true;
                         }
                         if self.budget == 0 {
@@ -524,6 +527,86 @@ impl M<'_> {
         }
         false
     }
+}
+
+/// The first exact run (2+ bytes; or 1 byte if nothing better) reachable from `pc`
+/// through fixed-length tokens only: (bytes before it, the run as stored).
+fn lead_run(c: &[u8], mut pc: usize) -> Option<(usize, Vec<u8>)> {
+    let mut k = 0usize;
+    let mut single: Option<(usize, Vec<u8>)> = None;
+    for _ in 0..16 {
+        if pc >= c.len() {
+            break;
+        }
+        match c[pc] {
+            RUN => {
+                let n = c[pc + 1] as usize;
+                let run = c[pc + 2..pc + 2 + n].to_vec();
+                if n >= 2 {
+                    return Some((k, run));
+                }
+                single.get_or_insert((k, run));
+                k += n;
+                pc += 2 + n;
+            }
+            MASK => {
+                k += 1;
+                pc += 3;
+            }
+            ALT => {
+                let n = c[pc + 2] as usize;
+                let mut q = pc + 3;
+                let mut len = None;
+                for _ in 0..n {
+                    let l = c[q] as usize;
+                    if len.is_some_and(|x| x != l) {
+                        return single;
+                    }
+                    len = Some(l);
+                    q += 1 + 2 * l;
+                }
+                k += len.unwrap_or(0);
+                pc = q;
+            }
+            _ => break, // another gap: the distance isn't fixed
+        }
+    }
+    single
+}
+
+fn find_run(h: &[u8], run: &[u8], nc: bool) -> Option<usize> {
+    if !nc {
+        return memchr::memmem::find(h, run);
+    }
+    let (a, b) = (run[0].to_ascii_lowercase(), run[0].to_ascii_uppercase());
+    let mut i = 0;
+    while i + run.len() <= h.len() {
+        let j = memchr::memchr2(a, b, &h[i..=h.len() - run.len()])?;
+        if h[i + j..i + j + run.len()].eq_ignore_ascii_case(run) {
+            return Some(i + j);
+        }
+        i += j + 1;
+    }
+    None
+}
+
+fn rfind_run(h: &[u8], run: &[u8], nc: bool) -> Option<usize> {
+    if !nc {
+        return memchr::memmem::rfind(h, run);
+    }
+    if h.len() < run.len() {
+        return None;
+    }
+    let (a, b) = (run[0].to_ascii_lowercase(), run[0].to_ascii_uppercase());
+    let mut end = h.len() - run.len() + 1;
+    while end > 0 {
+        let j = memchr::memrchr2(a, b, &h[..end])?;
+        if h[j..j + run.len()].eq_ignore_ascii_case(run) {
+            return Some(j);
+        }
+        end = j;
+    }
+    None
 }
 
 #[cfg(test)]
@@ -598,6 +681,41 @@ mod tests {
             let mut m = M { d: &d2, nc: false, budget: 1000, memo: Some(&mut memo) };
             assert!(m.fwd(&post, 0, pos + 2, &mut |_| true));
         }
+    }
+
+    #[test]
+    fn gaps_jump_over_fixed_tokens_and_case() {
+        // `*` then an alternative before the first fixed run (Andr.Trojan.Oldboot-9 shape)
+        let t = parse_hex("7f454c46(01|02)*(38|39)3039302f").unwrap();
+        let code = encode(&t, false);
+        let mut big = b"\x7fELF\x02".to_vec();
+        big.extend(std::iter::repeat_n(b'8', 2_000_000));
+        let mut m = M { d: &big, nc: false, budget: 20_000, memo: None };
+        assert!(!m.fwd(&code, 0, 0, &mut |_| true));
+        assert!(m.budget > 0, "decided without exhausting the budget");
+        big.extend(b"9090/");
+        let mut m = M { d: &big, nc: false, budget: 20_000, memo: None };
+        assert!(m.fwd(&code, 0, 0, &mut |_| true));
+        // case-insensitive `*` gaps
+        let mut t = parse_hex("616263*78797a").unwrap();
+        lower(&mut t);
+        let code = encode(&t, false);
+        let mut d = b"ABC".to_vec();
+        d.extend(std::iter::repeat_n(b'q', 1_000_000));
+        d.extend(b"XyZ");
+        let mut m = M { d: &d, nc: true, budget: 20_000, memo: None };
+        assert!(m.fwd(&code, 0, 0, &mut |_| true));
+        // backward, with fixed bytes between the run and the gap
+        let t = parse_hex("6162??*7a").unwrap();
+        let pre = encode(&t[..4], true);
+        let mut d = b"..ab!".to_vec();
+        d.extend(std::iter::repeat_n(b'.', 1_000_000));
+        d.push(b'z');
+        let zpos = d.len() - 1;
+        let mut m = M { d: &d, nc: false, budget: 20_000, memo: None };
+        let mut start = None;
+        assert!(m.bwd(&pre, 0, zpos, &mut |s| { start = Some(s); true }));
+        assert_eq!(start, Some(2));
     }
 
     #[test]

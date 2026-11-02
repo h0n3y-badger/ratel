@@ -29,5 +29,6 @@ depend() {
 
 start_pre() {
 	checkpath -f -m 0640 -o ratel-web:ratel /var/log/ratel/web.log
-	checkpath -d -m 0750 -o ratel-web:stunnel /run/ratel-web
+	# setgid: the socket ratel-web creates inherits group stunnel (only stunnel may connect)
+	checkpath -d -m 2750 -o ratel-web:stunnel /run/ratel-web
 }

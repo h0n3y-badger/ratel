@@ -1,0 +1,24 @@
+#!/sbin/openrc-run
+# TLS in front of the ratel dashboard: its own stunnel, bound to the Tailscale
+# address only (contrib/stunnel-ratel-web.conf -> /etc/stunnel/ratel-web.conf).
+# Supervised: at boot the tailnet address can appear after this starts, and stunnel
+# can't bind an address that doesn't exist yet; supervise-daemon simply retries.
+#   install -m755 contrib/ratel-tls.initd /etc/init.d/ratel-tls
+#   rc-update add ratel-tls default && rc-service ratel-tls start
+# After a certificate renewal: rc-service ratel-tls restart
+
+name="ratel-tls"
+description="stunnel TLS for the ratel dashboard (tailnet only)"
+command="/usr/bin/stunnel"
+command_args="/etc/stunnel/ratel-web.conf"
+supervisor=supervise-daemon
+respawn_delay=10
+respawn_max=0
+output_log="/var/log/ratel/tls.log"
+error_log="/var/log/ratel/tls.log"
+required_files="/etc/stunnel/ratel-web.conf"
+
+depend() {
+	need net
+	after tailscale ratel-web
+}

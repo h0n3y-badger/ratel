@@ -926,23 +926,44 @@ needed: one network-model fit on 2M rows takes 40–100 s.
 * `net` needs root for a full view and only sees the current network namespace
   (`watch` covers containers).
 
-## Server deployment (not done)
+## Server deployment
 
-`cargo build --release --target x86_64-unknown-linux-musl` gives a static binary
-that runs on Alpine (baseline x86-64, no AVX). On Alpine it verifies files
-against `/lib/apk/db/installed`. To install the monitor:
+Running since 2026-11-02 on the author's Alpine server (2x Opteron K10: the static
+binary needs no SSSE3/SSE4/AVX). The steps, as root:
 
 ```sh
+# binary + monitor (cargo build --release --target x86_64-unknown-linux-musl)
 install -m755 ratel /usr/local/bin/ratel
-install -m755 contrib/ratel-watch.initd /etc/init.d/ratel-watch
 install -Dm644 contrib/watch.conf /etc/ratel/watch.conf
+install -m755 contrib/ratel-watch.initd /etc/init.d/ratel-watch
 install -m644 contrib/ratel.logrotate /etc/logrotate.d/ratel
-rc-update add ratel-watch default && rc-service ratel-watch start
+
+# ClamAV signatures (ratel reads them itself; no clamd)
+apk add freshclam && rc-update add freshclam default && rc-service freshclam start
+
+# dashboard: unprivileged user, token, its own supervised stunnel on the tailnet address
+addgroup -S ratel && adduser -S -D -H -h /var/empty -s /sbin/nologin -G ratel ratel-web
+apk add stunnel
+install -m755 contrib/ratel-web.initd /etc/init.d/ratel-web
+install -m755 contrib/ratel-tls.initd /etc/init.d/ratel-tls
+sed "s/100.x.y.z/$(tailscale ip -4)/" contrib/stunnel-ratel-web.conf > /etc/stunnel/ratel-web.conf
+echo 'RATEL_WEB_HOST="<host>.<tailnet>.ts.net:8448"' > /etc/conf.d/ratel-web
+(umask 077; ratel web --init-token > /root/ratel-web-token.txt)   # read it once, then delete it
+chmod 640 /etc/ratel/web-token                                    # root:ratel: the dashboard checks it
+
+for s in ratel-watch ratel-web ratel-tls; do rc-update add $s default; rc-service $s start; done
 ```
 
-It opens no ports, so the firewall needs no changes. It learns for 24 h before
-novelty alerts start. Nothing has been deployed.
+Notes:
 
-For the signature part, install freshclam so `/var/lib/clamav` stays current
-(Alpine: the `freshclam` package, run as its service or from cron).
-ratel picks up updated databases within 15 minutes. clamd is not needed.
+* **Firewall:** the monitor opens no ports. The dashboard listens on the
+  tailnet address only, so a firewall that accepts `tailscale0` needs no change.
+* **Outbound filtering:** with an outbound policy that filters by user,
+  freshclam (user `clamav`) needs TCP 443.
+* **Certificates:** whatever renews the TLS certificate must also run
+  `rc-service ratel-tls restart`. stunnel holds the certificate in memory.
+* **Before turning on automatic quarantine,** do a dry run:
+  `ratel scan --json` over the watch paths. It should report no signature hits
+  and nothing "not fully checked".
+* **Learning:** behaviour alerts start after the 24 h learning period. File
+  signatures and the strict rule act from the first scan.

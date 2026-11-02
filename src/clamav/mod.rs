@@ -37,10 +37,12 @@ pub const FLEVEL: u32 = 234;
 pub const DEFAULT_DIR: &str = "/var/lib/clamav";
 /// Offset windows up to this size are tried position by position; larger ones float.
 const FIXED_MAX_SHIFT: u32 = 4096;
-const MATCH_BUDGET: u32 = 20_000;
-/// Verifications per pattern per file (only anchor hits inside the offset range count).
-/// Running out is reported (`limited`), never silently treated as clean.
-const MAX_TRIES_PER_PATTERN: u32 = 50_000;
+/// Matcher steps per verification, and per pattern per file in total: work, not a
+/// count of anchor hits, so cheap frequent checks (2-byte x86 anchors) finish while
+/// expensive ones stay bounded (~tens of ms per pattern on hostile input).
+const MATCH_BUDGET: u32 = 200_000;
+const PATTERN_STEPS: u64 = 20_000_000;
+// Running out of either budget is reported (`limited`), never silently treated as clean.
 /// PE sections hashed per file, and hash-name lookups per file (each re-reads the DB).
 const MAX_PE_SECTIONS: usize = 96;
 const MAX_HASH_LOOKUPS: usize = 4;
@@ -891,7 +893,8 @@ struct Hits {
     names: Vec<u32>,
     done: HashSet<u32>,
     seen: HashSet<(u32, usize)>,
-    tries: HashMap<u32, u32>,
+    /// matcher steps spent per pattern in this file
+    tries: HashMap<u32, u64>,
     counts: HashMap<u32, Vec<u32>>,
     memo: HashMap<u32, pattern::Memo>,
     /// a budget ran out: the file was not fully checked
@@ -909,6 +912,10 @@ fn word(b: u8) -> bool {
 }
 
 impl Part {
+    fn pat_name(&self, p: &Pat) -> String {
+        if p.sub == NDB { self.names.get(p.owner).to_string() } else { format!("{} sub{}", self.names.get(self.ldbs[p.owner as usize].name), p.sub) }
+    }
+
     fn record(&self, p: &Pat, pid: u32, start: usize, h: &mut Hits) {
         if p.sub == NDB {
             if h.done.insert(pid) {
@@ -940,20 +947,22 @@ impl Part {
         if pos < lo || (p.pre == 0 && pos > hi) {
             return;
         }
-        let t = h.tries.entry(pid).or_default();
-        if *t >= MAX_TRIES_PER_PATTERN {
+        let spent = h.tries.get(&pid).copied().unwrap_or(0);
+        if spent >= PATTERN_STEPS {
+            if !h.limited && std::env::var_os("RATEL_CLAM_DEBUG").is_some() { eprintln!("LIMIT steps pid {pid} {}", self.pat_name(p)); }
             h.limited = true;
             return;
         }
-        *t += 1;
+        let budget = MATCH_BUDGET.min((PATTERN_STEPS - spent) as u32);
         let (fw, wide) = (p.flags & F_FW != 0, p.flags & F_WIDE != 0);
         let c0 = p.code as usize + alen;
         let pre = &g.code[c0..c0 + p.pre as usize];
         let post = &g.code[c0 + p.pre as usize..c0 + (p.pre + p.post) as usize];
         let mut start = None;
+        let used: u32;
         let ok = {
             let memo = h.memo.entry(pid).or_default();
-            let mut m = pattern::M { d, nc: p.flags & F_NC != 0, budget: MATCH_BUDGET, memo: Some(memo) };
+            let mut m = pattern::M { d, nc: p.flags & F_NC != 0, budget, memo: Some(memo) };
             let r = m.fwd(post, 0, pos + alen, &mut |e| !fw || e >= d.len() || !word(d[e]))
                 && m.bwd(pre, 0, pos, &mut |s| {
                     let ok = s >= lo && s <= hi && (!fw || s == 0 || !word(d[s - if wide && s >= 2 { 2 } else { 1 }]));
@@ -963,10 +972,13 @@ impl Part {
                     ok
                 });
             if m.budget == 0 {
+                if std::env::var_os("RATEL_CLAM_DEBUG").is_some() { eprintln!("LIMIT budget(anchor) pid {pid} pos {pos} {}", self.pat_name(p)); }
                 h.limited = true;
             }
+            used = budget - m.budget;
             r
         };
+        *h.tries.entry(pid).or_default() += used as u64 + 1;
         if ok {
             self.record(p, pid, start.unwrap_or(pos), h);
         }
@@ -986,17 +998,26 @@ impl Part {
                 if fw && s > 0 && word(d[s - 1]) {
                     continue;
                 }
-                // a pattern tried at a handful of positions may backtrack much more
-                let budget = if hi - lo < 16 { MATCH_BUDGET * 50 } else { MATCH_BUDGET };
-                let ok = {
+                // a pattern tried at a handful of positions may backtrack more; all of it
+                // comes out of the same per-pattern budget
+                let spent = h.tries.get(&pid).copied().unwrap_or(0);
+                if spent >= PATTERN_STEPS {
+                    h.limited = true;
+                    break;
+                }
+                let per = if hi - lo < 16 { MATCH_BUDGET * 10 } else { MATCH_BUDGET };
+                let budget = per.min((PATTERN_STEPS - spent) as u32);
+                let (ok, used) = {
                     let memo = h.memo.entry(pid).or_default();
                     let mut m = pattern::M { d, nc: p.flags & F_NC != 0, budget, memo: Some(memo) };
                     let r = m.fwd(code, 0, s, &mut |e| !fw || e >= d.len() || !word(d[e]));
                     if m.budget == 0 {
+                        if std::env::var_os("RATEL_CLAM_DEBUG").is_some() { eprintln!("LIMIT budget(fixed) pid {pid} {}", self.pat_name(p)); }
                         h.limited = true;
                     }
-                    r
+                    (r, budget - m.budget)
                 };
+                *h.tries.entry(pid).or_default() += used as u64 + 1;
                 if ok {
                     self.record(p, pid, s, h);
                 }
