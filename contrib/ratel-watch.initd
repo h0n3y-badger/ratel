@@ -1,0 +1,27 @@
+#!/sbin/openrc-run
+# OpenRC service for `ratel watch` (Alpine). Install:
+#   install -m755 ratel /usr/local/bin/ratel
+#   install -m755 contrib/ratel-watch.initd /etc/init.d/ratel-watch
+#   install -Dm644 contrib/watch.conf /etc/ratel/watch.conf
+#   rc-update add ratel-watch default && rc-service ratel-watch start
+
+name="ratel-watch"
+description="ratel network behaviour monitor (exfiltration, C2, tunnels, scans)"
+command="/usr/local/bin/ratel"
+command_args="watch --config /etc/ratel/watch.conf"
+command_background=true
+pidfile="/run/${RC_SVCNAME}.pid"
+output_log="/var/log/ratel/watch.log"
+error_log="/var/log/ratel/watch.log"
+# lower CPU priority; the packet filter runs in the kernel either way
+start_stop_daemon_args="--nicelevel 10"
+retry="TERM/15/KILL/5"
+
+depend() {
+	need net
+	after firewall prosody docker
+}
+
+start_pre() {
+	checkpath -d -m 0750 -o root:root /var/lib/ratel /var/log/ratel
+}

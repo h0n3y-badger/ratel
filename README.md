@@ -1,10 +1,17 @@
 # ratel
 
-A small static "NGAV-lite": it looks at ELF and PE binaries and reports
-**capabilities** — anti-debugging, anti-VM/sandbox checks, obfuscation,
-packing, crypto, networking — with the evidence for each, plus a `/proc`-based
-network view of running processes. No ransomware rollback, no kernel driver,
-no cloud: one 1.6 MB static binary.
+A small "NGAV-lite" in one 2.4 MB static binary:
+
+* `ratel scan`: looks at ELF and PE binaries and reports **capabilities**
+  (anti-debugging, anti-VM/sandbox checks, obfuscation, packing, crypto,
+  networking) with the evidence for each.
+* `ratel watch`: a network behaviour monitor that sends alerts to XMPP. It
+  covers data exfiltration, C2 beaconing, DNS and ICMP tunnels, DGA lookups,
+  scanning, floods, spam bots, reverse shells, fileless networked processes and
+  periodic static scans.
+* `ratel net`: a one-shot `/proc` network view.
+
+No ransomware rollback, no kernel driver, no eBPF toolchain, no cloud.
 
 It is a capability detector, **not** a malware classifier. There is no malware
 in the training data, so it can't learn "malicious"; it learns "this binary
@@ -45,6 +52,158 @@ upgrades), hidden binary names, fake kernel-thread names, raw/packet sockets,
 many half-open connections, root processes fanning out to many hosts, and with
 `--watch`, connections re-established on a regular period (<25% jitter, ≥5
 reconnects). Sampling `/proc` misses connections shorter than the interval.
+
+## Network monitoring: `ratel watch`
+
+```sh
+ratel watch                                   # as root: full view, alerts to XMPP + /var/log/ratel/alerts.jsonl
+ratel watch --config contrib/watch.conf       # same options from a file (see contrib/)
+ratel watch --record ev.jsonl --anonymize     # also record every event (pseudonymised IPs/names/processes)
+ratel watch --replay ev.jsonl                 # run the engine on a recording; prints the alerts
+```
+
+**What it sees.** All of it is cheap kernel interfaces; no packet goes to
+userspace unless a filter in the kernel asks for it.
+* **Per-connection byte counters**: `NETLINK_SOCK_DIAG`, the interface `ss -ti`
+  uses, dumped every 2 s.
+* **Final counters of every TCP socket the moment it closes**: the kernel's
+  socket-destroy notifications, so a sub-second 80 MB upload is still counted.
+* **Docker containers**: both of the above are repeated inside every network
+  namespace.
+* **One AF_PACKET socket** with a hand-assembled classic BPF filter, which
+  passes only:
+  * DNS (query names and answers)
+  * outbound TCP SYNs (every connection attempt, exactly timed)
+  * ICMP echo requests
+  * 1 in 16 UDP headers (to estimate QUIC and custom UDP volume)
+* **Process attribution** via `/proc/*/fd`. Entities are the executable path,
+  plus the container ID, plus the script name for interpreters
+  (`/usr/bin/python3.12 [backup.py]`), so baselines don't mix.
+
+**What it learns, per process**, persisted in `/var/lib/ratel/net-state.json`:
+* hourly upload volume
+* destinations it normally talks to (by /24 or /48)
+* how often it meets new destinations, and how many of them never came from a
+  DNS lookup (p2p routers such as i2pd learn this quickly)
+* the largest volume it has ever sent to one host in an hour
+* whether it's a server, and whether it ever connects out
+* its active hours
+
+Novelty rules only start after `learn-hours` (default 24).
+
+**What it alerts on.** Each alert carries its evidence.
+
+| kind | evidence |
+|---|---|
+| exfil | large or upload-heavy transfers to new destinations; above the process's own baseline; to addresses no DNS lookup returned; slow drips; large pulls by new clients |
+| beacon | ≥10 connections with <20% period jitter; strong only toward bare IPs that weren't learned as normal |
+| dns | long, high-entropy, ever-changing subdomains; volume encoded in query names; TXT/NULL channels |
+| dga | ≥25 random-looking domains failing to resolve in 10 minutes |
+| icmp | echo requests with large payloads (ICMP tunnels) |
+| scan / flood / spam | SYN fan-out over hosts or ports; SYN floods; connection floods; one-way UDP volume; SMTP fan-out from a process that isn't a mail server |
+| process | stdin/stdout of a shell or interpreter connected to a remote host (reverse shell); executables running from a memfd, /tmp or /dev/shm, hidden names, fake kernel-thread names |
+| file | `--scan-path`: a binary scoring `high`, or a package file modified after installation (once per file version) |
+
+Two gradient-boosted models (`flow`: exfiltration and C2 per process→host
+pair; `dns`: tunnelling per base domain) score every unit once a minute.
+
+As in `scan`, the model needs a reason:
+* model plus at least weak rule evidence: up to `medium`
+* `high`: needs strong rule evidence
+* model alone: only a `low`, which is logged but not sent
+
+**Alerts** go to the homelab notify socket (`/run/prosody/notify.sock`, the
+protocol from `~/Projects/notify-sdk`):
+* batched for 30 s (5 s when something is `high`)
+* at most one message every 10 s and 60 a day
+* each alert key repeats at most every 6 h, sooner only if it gets worse
+* `medium` and up by default
+* falls back to syslog when the socket is down
+
+`contrib/` has an OpenRC service, a config and a logrotate file. **Nothing has
+been deployed.**
+
+Footprint, measured in a network namespace while pushing 2 GB of TCP, 300k
+UDP packets and 2,000 short connections through it:
+* 0.28 s of CPU
+* 5.3 MB peak RSS
+
+Recording this desktop unprivileged (every 2 s, writing JSON) costs about 1%
+of one core and 11.5 MB.
+
+### How the network models are trained
+
+`train/net/pipeline.sh` takes about 4 minutes on this desktop. Every source
+goes through the same Rust engine (`ratel watch --replay --emit`), so training
+features and live features are computed by the same code.
+
+* **Synthetic server traces** (`train/net/gen_traces.py`): 900 simulated
+  servers × 8–48 h, 51M events.
+  * **Benign services modelled on the homelab:** a web server and reverse
+    proxy, a p2p router, Tailscale, legitimate pollers that *do* beacon,
+    backups, package updates, git, ssh with scp downloads, feed fetchers, one-off
+    user uploads, browsing, and background DNS including reverse lookups, DNS
+    blocklists, antivirus hash lookups, CDN hostnames and ACME TXT records.
+  * **Attacks:** 23 labelled attack families.
+* **CTU-13** (Czech Technical University): real traffic from a university
+  network with hosts infected by Neris, Rbot, Virut, Murlo and NSIS.ay. Only
+  the labelled NetFlow records are used (`train/net/fetch_ctu.sh`): no malware,
+  no payloads. Normal hosts of 5 captures are training negatives. Infected
+  hosts are **never** trained on: an earlier attempt that did learned "looks
+  like a 2011 university capture" and flagged 30 of 107 normal hosts.
+* **This desktop's own traffic**: an unprivileged, anonymised recording, used
+  for evaluation only.
+
+Evaluation holds out whole attack families, chooses the threshold on separate
+validation families against the *alert decision* (rules + gated model), and
+counts what would actually reach XMPP (`train/eval_net.py`, with cooldowns):
+
+| held-out attack family (never trained on) | detected |
+|---|---:|
+| exfiltration to odd ports | 49/49 |
+| parallel-connection exfiltration | 60/60 |
+| staged / chunked exfiltration | 43/43 |
+| slow drip (KB per few minutes, hours) | 26/40 |
+| regular beacons | 41/43 |
+| fast DNS tunnel (iodine-like) | 42/42 |
+| HTTP connection flood | 52/52 |
+| UDP flood | 37/46 (the misses are traces without capture) |
+
+| trained families, held-out traces | |
+|---|---:|
+| jittered / long-sleep / named-host / tasking beacons | 48/48 |
+| exfiltration: direct IP / cloud storage / inbound pull / compromised service | 49/50 |
+| UDP exfiltration | 9/14 |
+| reverse shells, spam bots, slow DNS tunnels, DNS exfiltration, TXT C2 | 57/57 |
+
+* **False alarms:** 0.26 per host-day across 415 simulated host-days.
+  Nearly all are one-off uploads by user tools (rclone, git, rsync, a Python
+  script) to sites the server had never contacted. Those really do look like
+  exfiltration; `ignore = /usr/bin/rclone` silences an entity.
+* **CTU-13:**
+  * Infected hosts were detected in Neris and Rbot captures, in Murlo
+    (capture 49) and in Virut (54), but not in Virut 46 or NSIS.ay 53. Those
+    botnets mostly spam, flood or run P2P with no beaconing pattern visible in
+    flow records.
+  * About one normal host per capture is flagged. It's the same machine polling
+    something every 31 s for hours; with no DNS in NetFlow it looks exactly like
+    C2.
+
+Limits:
+* **Root required:** the monitor needs root (capture, destroy events,
+  container namespaces, attribution).
+* **Short-lived connections:** a connection that opens and closes between two
+  dumps gets exact bytes, but only `uid:N` attribution.
+* **Encrypted DNS:** DNS over HTTPS or TLS is invisible as DNS. It's just HTTPS
+  flows to a resolver.
+* **UDP volume is sampled:** small UDP exfiltration and UDP-only C2 are weak
+  spots.
+* **No real exfiltration data:** there's no public labelled dataset for
+  exfiltration, so those families are synthetic. The engine was checked
+  end-to-end on real packets in an unprivileged network namespace
+  (`unshare -rn python3 train/net/sandbox_test.py`): exfiltration, DNS tunnel,
+  beacon, reverse shell, ICMP tunnel, port scan, the file scan and the XMPP
+  path all fire, and the benign traffic doesn't.
 
 ## Telling legitimate software apart
 
@@ -188,7 +347,7 @@ ptrace and memfd. With package trust, nothing is above `low`, because every one 
 those files is verified against pacman.
 
 Footprint (static musl build, scanning /usr/bin + /usr/lib, 13.6k files):
-1.7 MB binary, ~30 MiB heap regardless of thread count (files are mmapped; RSS
+2.4 MB binary (with `watch`), ~30 MiB heap regardless of thread count (files are mmapped; RSS
 including mapped file pages is 130 MiB with `-j1`), 108 s single-threaded, 28 s
 with 4 threads, ~30 ms for one small file. Runs on baseline x86-64 (no AVX
 required; memchr/aho-corasick pick SIMD at runtime).
@@ -216,12 +375,21 @@ required; memchr/aho-corasick pick SIMD at runtime).
 * There's no Authenticode verification for PE files: signed Windows software is
   only trusted via the hash allowlist.
 * `net` needs root for a full view and only sees the current network namespace
-  (containers need `nsenter`).
+  (`watch` covers containers).
 
 ## Server deployment (not done)
 
 `cargo build --release --target x86_64-unknown-linux-musl` gives a static binary
-that runs on Alpine as-is and verifies against `/lib/apk/db/installed` there.
-Nothing has been deployed; a cron job like
-`ratel scan --json --min-risk 0.5 -j 2 /usr/local /opt /tmp /home | xmpp-notify`
-and `ratel net --json` would be the natural first step.
+that runs on Alpine (baseline x86-64, no AVX). On Alpine it verifies files
+against `/lib/apk/db/installed`. To install the monitor:
+
+```sh
+install -m755 ratel /usr/local/bin/ratel
+install -m755 contrib/ratel-watch.initd /etc/init.d/ratel-watch
+install -Dm644 contrib/watch.conf /etc/ratel/watch.conf
+install -m644 contrib/ratel.logrotate /etc/logrotate.d/ratel
+rc-update add ratel-watch default && rc-service ratel-watch start
+```
+
+It opens no ports, so the firewall needs no changes. It learns for 24 h before
+novelty alerts start. Nothing has been deployed.

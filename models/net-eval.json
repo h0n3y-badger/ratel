@@ -1,0 +1,170 @@
+{
+ "binary": "/home/h0n3y-badger/Projects/ratel/target/release/ratel",
+ "synthetic": {
+  "traces": 390,
+  "host_days": 414.7,
+  "held_out_family_recall": {
+   "beacon_regular": "41/43",
+   "ddos_http": "52/52",
+   "ddos_udp": "37/46",
+   "dns_tunnel_fast": "42/42",
+   "exfil_oddport": "49/49",
+   "exfil_parallel": "60/60",
+   "exfil_staged": "43/43",
+   "slow_drip": "26/40"
+  },
+  "other_family_recall": {
+   "beacon_jitter": "11/11",
+   "beacon_long_sleep": "11/11",
+   "beacon_named": "9/9",
+   "beacon_tasks": "17/17",
+   "compromised_service_exfil": "11/11",
+   "dns_exfil_a": "11/11",
+   "dns_exfil_b64": "9/9",
+   "dns_tunnel_slow": "7/7",
+   "dns_txt_c2": "11/11",
+   "exfil_direct_ip": "13/14",
+   "exfil_https_cloud": "7/7",
+   "exfil_pull_inbound": "18/18",
+   "exfil_udp": "9/14",
+   "revshell": "7/7",
+   "spam_bot": "12/12"
+  },
+  "false_alerts_per_host_day": 0.258,
+  "false_alert_kinds": {
+   "exfil": 103,
+   "process": 2,
+   "scan": 2
+  },
+  "false_alert_examples": [
+   "medium possible data exfiltration: /usr/bin/rclone -> 76.144.168.190 (static.wixpix.online) | upload-heavy: 15.2 MB out vs 836 B in over the last hour to a new destination",
+   "medium possible data exfiltration: /usr/lib/git-core/git-remote-https -> 121.32.23.226 | upload-heavy: 16.8 MB out vs 27.2 KB in over the last hour to a new destination",
+   "medium possible data exfiltration: /usr/bin/rsync -> 218.174.57.149 | upload-heavy: 937.1 MB out vs 4.7 MB in over the last hour to a new destination",
+   "medium possible data exfiltration: /usr/bin/python3.12 [fetch.py] -> 33.199.26.217 (mirror.velyarru.online) | upload-heavy: 57.2 MB out vs 436 B in over the last hour to a new destination",
+   "medium possible data exfiltration: /usr/bin/cargo -> 211.64.24.234 | upload-heavy: 59.8 MB out vs 550 B in over the last hour to a new destination",
+   "medium possible data exfiltration: /usr/sbin/nginx -> 64.154.67.30 | /usr/sbin/nginx sent 198.4 MB in the last hour; its usual peak hour is 19.8 MB",
+   "medium possible data exfiltration: /usr/bin/rsync -> 166.158.91.67 (ayvv3q7trmqhz.dropboxapi.com) | upload-heavy: 681.4 MB out vs 3.4 MB in over the last hour to a new destination",
+   "medium possible data exfiltration: /usr/lib/git-core/git-remote-https -> 110.136.63.231 | upload-heavy: 8.6 MB out vs 61.9 KB in over the last hour to a new destination",
+   "medium possible data exfiltration: /usr/bin/restic -> 2.87.223.38 | upload-heavy: 106.2 MB out vs 531.0 KB in over the last hour to a new destination",
+   "medium possible data exfiltration: /usr/lib/librewolf/librewolf -> 221.103.3.65 (auth.corka.info) | upload-heavy: 145.6 MB out vs 128.6 KB in over the last hour to a new destination",
+   "medium possible data exfiltration: /usr/sbin/nginx -> 176.50.88.35 | /usr/sbin/nginx sent 55.0 MB in the last hour; its usual peak hour is 2.5 MB",
+   "medium possible data exfiltration: /usr/lib/git-core/git-remote-https -> 132.134.236.64 | upload-heavy: 2.0 MB out vs 190.5 KB in over the last hour to a new destination"
+  ]
+ },
+ "ctu13": {
+  "ctu42": {
+   "split": "ctu_train",
+   "infected_detected": "1/1",
+   "normal_hosts_alerted": "1/17",
+   "alerts_on_normal_hosts": 1,
+   "kinds_on_infected": {
+    "spam": 1,
+    "beacon": 1,
+    "flow": 1
+   },
+   "normal_host_alerts": {
+    "possible C2 beaconing | 10 connections every 30s (jitter 0%)": 1
+   }
+  },
+  "ctu43": {
+   "split": "ctu_train",
+   "infected_detected": "1/1",
+   "normal_hosts_alerted": "1/12",
+   "alerts_on_normal_hosts": 1,
+   "kinds_on_infected": {
+    "flood": 1,
+    "spam": 1,
+    "beacon": 4,
+    "flow": 3
+   },
+   "normal_host_alerts": {
+    "possible C2 beaconing | 10 connections every 31s (jitter 2%)": 1
+   }
+  },
+  "ctu46": {
+   "split": "ctu_test",
+   "infected_detected": "0/1",
+   "normal_hosts_alerted": "1/18",
+   "alerts_on_normal_hosts": 1,
+   "kinds_on_infected": {},
+   "normal_host_alerts": {
+    "possible C2 beaconing | 10 connections every 31s (jitter 1%)": 1
+   }
+  },
+  "ctu49": {
+   "split": "ctu_test",
+   "infected_detected": "1/1",
+   "normal_hosts_alerted": "1/19",
+   "alerts_on_normal_hosts": 2,
+   "kinds_on_infected": {
+    "flow": 1,
+    "beacon": 4
+   },
+   "normal_host_alerts": {
+    "possible C2 beaconing | 10 connections every 31s (jitter 2%)": 1,
+    "possible C2 beaconing | 64 connections every 31s (jitter 0%)": 1
+   }
+  },
+  "ctu50": {
+   "split": "ctu_train",
+   "infected_detected": "10/10",
+   "normal_hosts_alerted": "1/23",
+   "alerts_on_normal_hosts": 1,
+   "kinds_on_infected": {
+    "spam": 10,
+    "beacon": 27,
+    "flow": 13
+   },
+   "normal_host_alerts": {
+    "possible C2 beaconing | 10 connections every 31s (jitter 2%)": 1
+   }
+  },
+  "ctu51": {
+   "split": "ctu_train",
+   "infected_detected": "1/10",
+   "normal_hosts_alerted": "1/16",
+   "alerts_on_normal_hosts": 1,
+   "kinds_on_infected": {
+    "flow": 1
+   },
+   "normal_host_alerts": {
+    "possible C2 beaconing | 11 connections every 31s (jitter 0%)": 1
+   }
+  },
+  "ctu52": {
+   "split": "ctu_train",
+   "infected_detected": "0/3",
+   "normal_hosts_alerted": "1/12",
+   "alerts_on_normal_hosts": 1,
+   "kinds_on_infected": {},
+   "normal_host_alerts": {
+    "possible C2 beaconing | 10 connections every 31s (jitter 0%)": 1
+   }
+  },
+  "ctu53": {
+   "split": "ctu_test",
+   "infected_detected": "0/3",
+   "normal_hosts_alerted": "1/11",
+   "alerts_on_normal_hosts": 1,
+   "kinds_on_infected": {},
+   "normal_host_alerts": {
+    "possible C2 beaconing | 10 connections every 31s (jitter 0%)": 1
+   }
+  },
+  "ctu54": {
+   "split": "ctu_test",
+   "infected_detected": "1/1",
+   "normal_hosts_alerted": "1/19",
+   "alerts_on_normal_hosts": 2,
+   "kinds_on_infected": {
+    "spam": 1,
+    "flow": 5,
+    "beacon": 18
+   },
+   "normal_host_alerts": {
+    "possible C2 beaconing | 11 connections every 31s (jitter 0%)": 1,
+    "possible C2 beaconing | 64 connections every 31s (jitter 1%)": 1
+   }
+  }
+ }
+}

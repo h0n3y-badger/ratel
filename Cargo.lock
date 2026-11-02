@@ -191,6 +191,7 @@ dependencies = [
  "flate2",
  "goblin",
  "iced-x86",
+ "libc",
  "memmap2",
  "serde",
  "serde_json",

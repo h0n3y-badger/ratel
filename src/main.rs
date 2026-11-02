@@ -4,6 +4,7 @@ mod model;
 mod net;
 mod report;
 mod trust;
+mod watch;
 
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicUsize, Ordering};
@@ -32,6 +33,7 @@ usage:
       --interval MS               sampling interval for --watch (default 1000)
       --scan-exes                 statically scan each networked process's executable
   ratel info                      show embedded model info
+  ratel watch [opts]              network behaviour monitor with alerts (see ratel watch --help)
 
 common opts:
   --jobs N        worker threads (default: number of CPUs, max 4)
@@ -167,6 +169,56 @@ pub fn read_candidate(p: &Path, max: u64) -> Option<Bytes> {
     Some(Bytes::Heap(buf))
 }
 
+pub struct ScanCfg {
+    pub jobs: usize,
+    pub max: u64,
+    pub allow: Vec<String>,
+    pub integrity: bool,
+    pub pkg_trust: bool,
+}
+
+/// Static scan with provenance. `sink` gets each result and, when the file was
+/// hashed, its sha256. Returns the number of ELF/PE files scanned.
+pub fn scan_files(paths: &[PathBuf], c: &ScanCfg, m: &model::Model,
+                  mut sink: impl FnMut(&Path, &report::Assessment, Option<String>)) -> Result<usize, String> {
+    let mut files = vec![];
+    collect(paths, &mut files);
+    let kind = trust::detect_pkg_kind();
+    let mut allow_files: Vec<(String, bool)> = trust::default_allowlists().into_iter().map(|f| (f, false)).collect();
+    allow_files.extend(c.allow.iter().map(|f| (f.clone(), true)));
+    let mut trust_db: Option<trust::Trust> = None;
+    let mut err = None;
+    let mut n = 0usize;
+    par_files(&files, c.jobs, |p| read_candidate(p, c.max).map(|d| {
+        let r = report::assess(&features::analyze(&d), m);
+        // Hash only what provenance can change: non-clean files (or all, with integrity checks).
+        let h = (c.integrity || r.risk >= 0.25).then(|| trust::hash(&d, kind));
+        (r, h)
+    }), |p, (mut r, h)| {
+        n += 1;
+        let mut hex = None;
+        if let Some(h) = h {
+            if trust_db.is_none() && err.is_none() {
+                let wanted = files.iter().filter_map(|f| std::fs::canonicalize(f).ok()).collect();
+                match trust::Trust::load(kind, &allow_files, &wanted) {
+                    Ok(t) => trust_db = Some(t),
+                    Err(e) => err = Some(e),
+                }
+            }
+            if let Some(t) = &trust_db {
+                let canon = std::fs::canonicalize(p).unwrap_or_else(|_| p.to_path_buf());
+                report::apply_origin(&mut r, t.origin(&canon, &h), c.pkg_trust);
+            }
+            hex = Some(trust::hex(&h.sha256));
+        }
+        sink(p, &r, hex);
+    });
+    match err {
+        Some(e) => Err(e),
+        None => Ok(n),
+    }
+}
+
 /// Runs `work` over files on a small thread pool; results come back in any order.
 fn par_files<T: Send>(files: &[PathBuf], jobs: usize, work: impl Fn(&Path) -> Option<T> + Sync, mut sink: impl FnMut(&Path, T)) {
     let next = AtomicUsize::new(0);
@@ -201,6 +253,14 @@ fn main() {
         print!("{USAGE}");
         std::process::exit(2);
     };
+    if cmd == "watch" {
+        watch::run(&args[1..]);
+        return;
+    }
+    if cmd == "net-feature-names" {
+        println!("{}", serde_json::json!({"flow": watch::engine::FLOW_FEATURES, "dns": watch::engine::DNS_FEATURES}));
+        return;
+    }
     let o = parse_opts(&args[1..]).unwrap_or_else(|e| die(&e));
     let max = o.max_size << 20;
     match cmd.as_str() {
@@ -213,6 +273,11 @@ fn main() {
             let m = load_model(&o);
             println!("model version {} ({}), {} trees, {} scanner features, empty={}",
                 m.version, m.trained, m.n_trees, features::FEATURE_NAMES.len(), m.is_empty());
+            match model::NetModel::load(model::EMBEDDED_NET, &[("flow", watch::engine::FLOW_FEATURES), ("dns", watch::engine::DNS_FEATURES)]) {
+                Ok(n) => println!("network model version {} ({}), units: {}", n.version, n.trained,
+                    n.units.keys().cloned().collect::<Vec<_>>().join(", ")),
+                Err(e) => println!("network model: {e}"),
+            }
         }
         "features" => {
             let mut paths = o.paths.clone();
@@ -240,34 +305,12 @@ fn main() {
             if m.is_empty() {
                 eprintln!("ratel: warning: no model embedded, rules only");
             }
-            let mut files = vec![];
-            collect(&o.paths, &mut files);
-            let kind = trust::detect_pkg_kind();
-            let mut allow_files: Vec<(String, bool)> = trust::default_allowlists().into_iter().map(|f| (f, false)).collect();
-            allow_files.extend(o.allow.iter().map(|f| (f.clone(), true)));
-            // Load the allowlist up front (fails fast on a bad --allow); the package DB lazily.
-            let mut trust_db: Option<trust::Trust> = None;
             let mut worst = 0.0f64;
-            let mut n = 0usize;
-            let integrity = o.integrity;
-            par_files(&files, o.jobs, |p| read_candidate(p, max).map(|d| {
-                let r = report::assess(&features::analyze(&d), &m);
-                // Hash only what provenance can change: non-clean files (or all, with --integrity).
-                let h = (integrity || r.risk >= 0.25).then(|| trust::hash(&d, kind));
-                (r, h)
-            }), |p, (mut r, h)| {
-                n += 1;
-                if let Some(h) = h {
-                    let t = trust_db.get_or_insert_with(|| {
-                        let wanted = files.iter().filter_map(|f| std::fs::canonicalize(f).ok()).collect();
-                        trust::Trust::load(kind, &allow_files, &wanted).unwrap_or_else(|e| die(&e))
-                    });
-                    let canon = std::fs::canonicalize(p).unwrap_or_else(|_| p.to_path_buf());
-                    report::apply_origin(&mut r, t.origin(&canon, &h), !o.no_pkg_trust);
-                }
-                worst = worst.max(report::alerting_risk(&r));
-                report::print(p, &r, &o);
-            });
+            let cfg = ScanCfg { jobs: o.jobs, max, allow: o.allow.clone(), integrity: o.integrity, pkg_trust: !o.no_pkg_trust };
+            let n = scan_files(&o.paths, &cfg, &m, |p, r, _| {
+                worst = worst.max(report::alerting_risk(r));
+                report::print(p, r, &o);
+            }).unwrap_or_else(|e| die(&e));
             if !o.json {
                 eprintln!("ratel: scanned {n} ELF/PE file(s), highest risk {worst:.2}");
             }
