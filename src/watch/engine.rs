@@ -59,6 +59,7 @@ pub fn feature_label(name: &str) -> &str {
         "pair_ratio_total" => "total upload/download ratio", "pair_age_log" => "how long this pair has talked",
         "ent_unnamed_frac" => "process's share of DNS-less hosts", "ent_newdest_p95_log" => "process's usual new-host rate",
         "ent_max_pair_out_log" => "process's largest hourly upload to one host", "out60_vs_max_pair" => "upload vs that largest",
+        "port_stratum" => "mining-pool (stratum) port",
         "act_gap_cv" => "regularity of activity inside connections", "act_gap_mean_log" => "period of activity bursts",
         "q10_log" => "queries (10 min)", "uniq10_log" => "distinct names (10 min)", "uniq_ratio" => "share of never-repeated names",
         "sub_len_mean" => "subdomain length", "sub_len_max" => "longest subdomain", "label_len_max" => "longest label",
@@ -1370,6 +1371,50 @@ impl Engine {
         let mut v: Vec<&Ent> = self.st.ents.iter().filter(|e| e.first_t >= t && e.first_t > self.st.start_t + 60.0).collect();
         v.sort_by(|a, b| a.first_t.partial_cmp(&b.first_t).unwrap());
         v.into_iter().map(|e| e.name.clone()).collect()
+    }
+
+    /// What's happening right now, for `ratel web`: busiest flows (10 min), processes
+    /// (24 h), DNS domains (10 min).
+    pub fn live_snapshot(&self) -> serde_json::Value {
+        let now_m = (self.t / MIN) as i64;
+        let mut flows: Vec<(u64, serde_json::Value)> = vec![];
+        for ((ei, ip), p) in &self.pairs {
+            let sum = |w: i64, f: &dyn Fn(&(i64, u64, u64, u32, u64)) -> u64| -> u64 { p.mins.iter().filter(|b| b.0 > now_m - w).map(f).sum() };
+            let (o10, i10) = (sum(11, &|b| b.1), sum(11, &|b| b.2));
+            if o10 + i10 == 0 && self.t - p.last_t > 600.0 {
+                continue;
+            }
+            let e = &self.st.ents[*ei];
+            let class = match dest_class(ip) { DestClass::Public => "public", DestClass::Private => "private", DestClass::Overlay => "overlay", DestClass::Local => "local" };
+            flows.push((o10 + i10, serde_json::json!({
+                "entity": e.name, "pid": e.last_pid, "dest": ip.to_string(), "name": self.name_of(ip), "port": p.ports.first(),
+                "class": class, "inbound": p.inbound > p.outbound, "out10": o10, "in10": i10, "out60": sum(61, &|b| b.1),
+                "in60": sum(61, &|b| b.2), "conns60": sum(61, &|b| b.3 as u64), "first_seen": p.first_t, "last_seen": p.last_t,
+            })));
+        }
+        flows.sort_by(|a, b| b.0.cmp(&a.0));
+        let now_h = (self.t / HOUR) as i64;
+        let mut ents: Vec<(u64, serde_json::Value)> = self.st.ents.iter().filter(|e| self.t - e.last_t < 86_400.0).map(|e| {
+            let out24: u64 = e.hours.iter().filter(|h| h.0 >= now_h - 24).map(|h| h.1).sum::<u64>() + e.cur_out;
+            (out24, serde_json::json!({
+                "name": e.name, "first_seen": e.first_t, "server": e.server, "out24h": out24, "known_destinations": e.dests.len(),
+                "usual_peak_hour": e.p95(|h| h.1 as f64), "flag": e.flag,
+                "static": if e.static_detail.is_empty() { serde_json::Value::Null } else { e.static_detail.clone().into() },
+            }))
+        }).collect();
+        ents.sort_by(|a, b| b.0.cmp(&a.0));
+        let mut dns: Vec<(usize, serde_json::Value)> = self.dns.iter().filter(|(_, a)| self.t - a.last_t < 600.0).map(|((src, base), a)| {
+            let q: Vec<_> = a.q.iter().filter(|q| self.t - q.0 < 600.0).collect();
+            let uniq: HashSet<&str> = q.iter().map(|q| q.1.as_str()).collect();
+            (q.len(), serde_json::json!({"entity": src, "domain": base, "queries10": q.len(), "unique10": uniq.len()}))
+        }).collect();
+        dns.sort_by(|a, b| b.0.cmp(&a.0));
+        serde_json::json!({
+            "updated": self.t, "learning": self.history_hours() < self.cfg.learn_hours, "history_hours": (self.history_hours() * 10.0).round() / 10.0,
+            "flows": flows.into_iter().take(100).map(|x| x.1).collect::<Vec<_>>(),
+            "entities": ents.into_iter().take(100).map(|x| x.1).collect::<Vec<_>>(),
+            "dns": dns.into_iter().take(50).map(|x| x.1).collect::<Vec<_>>(),
+        })
     }
 
     pub fn stats(&self) -> serde_json::Value {

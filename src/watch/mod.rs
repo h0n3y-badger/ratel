@@ -165,7 +165,11 @@ fn save_state(dir: &Option<String>, st: &mut State) {
     let _ = std::fs::create_dir_all(d);
     let tmp = format!("{d}/net-state.json.tmp");
     if let Ok(b) = serde_json::to_vec(st) {
-        if std::fs::write(&tmp, b).is_ok() {
+        use std::os::unix::fs::OpenOptionsExt;
+        // learned baselines: root only (the dashboard group doesn't need them)
+        let w = std::fs::OpenOptions::new().write(true).create(true).truncate(true).mode(0o600).open(&tmp)
+            .and_then(|mut f| f.write_all(&b));
+        if w.is_ok() {
             let _ = std::fs::rename(&tmp, format!("{d}/net-state.json"));
         }
     }
@@ -442,6 +446,8 @@ fn live(o: &WOpts, cfg: Config, model: crate::model::NetModel) {
         libc::signal(libc::SIGINT, on_signal as *const () as libc::sighandler_t);
     }
     let root = unsafe { libc::geteuid() } == 0;
+    // files we create are group-readable (for the `ratel web` group), never world-readable
+    unsafe { libc::umask(0o027) };
     let state_dir = o.state.clone().or_else(|| root.then(|| "/var/lib/ratel".to_string()));
     let log_path = o.log.clone().or_else(|| root.then(|| "/var/log/ratel/alerts.jsonl".to_string()));
     let log = log_path.as_ref().and_then(|p| {
@@ -561,7 +567,7 @@ fn live(o: &WOpts, cfg: Config, model: crate::model::NetModel) {
         if root && std::fs::create_dir_all("/run/ratel").is_ok() { Some("/run/ratel/status.json".into()) }
         else { state_dir.as_ref().map(|d| std::path::Path::new(d).join("status.json")) }
     });
-    let feedback = state_dir.as_ref().map(|d| std::path::Path::new(d).join("feedback.jsonl"));
+    let feedback = state_dir.as_ref().map(std::path::PathBuf::from);
     let mut feedback_mtime = None;
     let mut last_status = Instant::now() - Duration::from_secs(3600);
     let mut last_drop_check = Instant::now();
@@ -841,11 +847,39 @@ fn live(o: &WOpts, cfg: Config, model: crate::model::NetModel) {
                 health.win_packets = 0;
                 health.win_drops = 0;
             }
-            if let Some(f) = &feedback {
-                let m = std::fs::metadata(f).and_then(|m| m.modified()).ok();
+            if let Some(d) = &feedback {
+                let m = Some(incidents::feedback_stamp(d));
                 if m != feedback_mtime {
                     feedback_mtime = m;
-                    eng.cfg.suppress = incidents::load_suppressions(f.parent().unwrap());
+                    let (new, skipped) = incidents::load_suppressions_checked(d);
+                    // Every suppression is announced once, against a root-only ledger: a
+                    // compromised dashboard (or anyone with write access to the inbox) can't
+                    // silently mute the monitor, not even while the daemon is restarting.
+                    let mut ledger = incidents::announced(d);
+                    let fresh: Vec<&(String, String, String)> = new.iter().filter(|x| !ledger.contains(*x)).collect();
+                    if !fresh.is_empty() {
+                        // wildcard / broad ones first and never cut; then the rest up to 20
+                        let broad = |x: &&(String, String, String)| x.1 == "*" || x.2 == "*";
+                        let mut lines: Vec<String> = fresh.iter().filter(|x| broad(x)).map(|(e, dst, k)| format!("BROAD: {k} alerts for {e} -> {dst}")).collect();
+                        let mut rest: Vec<String> = fresh.iter().filter(|x| !broad(x)).map(|(e, dst, k)| format!("{k} alerts for {e} -> {dst}")).collect();
+                        rest.sort();
+                        let n_rest = rest.len();
+                        rest.truncate(20);
+                        lines.extend(rest);
+                        if n_rest > 20 {
+                            lines.push(format!("… and {} more (see feedback files)", n_rest - 20));
+                        }
+                        let a = health_alert("suppression", "medium", &format!("{} alert suppression(s) added (false-alarm feedback)", fresh.len()), lines);
+                        handle_alert(a, &eng, &mut sink, &mut out, &mut health);
+                        ledger.extend(new.iter().cloned());
+                        incidents::save_announced(d, &ledger);
+                    }
+                    if !skipped.is_empty() && t - last_health.get("feedback").copied().unwrap_or(0.0) > 21_600.0 {
+                        last_health.insert("feedback", t);
+                        let a = health_alert("feedback", "medium", "feedback inbox: files or entries ignored", skipped.into_iter().take(10).collect());
+                        handle_alert(a, &eng, &mut sink, &mut out, &mut health);
+                    }
+                    eng.cfg.suppress = new;
                 }
             }
             if o.digest_hour >= 0 && incidents::local_hour(t) == o.digest_hour && t - eng.st.last_digest > 20.0 * 3600.0
@@ -861,6 +895,12 @@ fn live(o: &WOpts, cfg: Config, model: crate::model::NetModel) {
                 sx.expire(t);
             }
             if let Some(sp) = &status_path {
+                // live view for `ratel web`, next to the status file
+                let lp = sp.with_file_name("live.json");
+                let tmp = lp.with_extension("tmp");
+                if std::fs::write(&tmp, eng.live_snapshot().to_string()).is_ok() {
+                    let _ = std::fs::rename(&tmp, &lp);
+                }
                 let open = sink.store.as_ref().map_or(0, |s| s.open_count());
                 incidents::write_status(sp, &health, &eng, serde_json::json!({"open_incidents": open, "suppressions": eng.cfg.suppress.len(),
                     "capture": cap.is_some(), "root": root}));

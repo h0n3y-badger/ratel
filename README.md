@@ -196,6 +196,103 @@ Detection is the first step. This is what happens after it:
   * both are rotated by `contrib/ratel.logrotate`
 
 
+### Web dashboard: `ratel web`
+
+A small dashboard over what `ratel watch` writes, so you don't need SSH. It
+has four views:
+* **Overview:** health, learning state, alert counts and a 48 h chart, open
+  incidents, top uploaders.
+* **Live:** the busiest flows per process right now, processes and DNS.
+* **Alerts.**
+* **Incidents:** the full `ratel explain` view, with **Reviewed** /
+  **False alarm** buttons.
+
+It's built into the same binary, so there's nothing extra to install on Alpine.
+
+```sh
+ratel web --init-token                       # once, as root: prints the access token, stores only its hash
+rc-update add ratel-web default && rc-service ratel-web start   # contrib/ratel-web.initd
+# then https://homelab.<tailnet>.ts.net:8448 through stunnel (contrib/stunnel-ratel-web.conf)
+```
+
+Security, because this sits next to a root daemon:
+
+* **Independent review:** an adversarial review found 11 issues, all fixed and
+  covered by tests:
+  * a pre-auth log flood (91 MB/s)
+  * slowloris
+  * an admin lockout behind stunnel
+  * localhost port squatting to steal the token
+  * over-broad false-alarm suppressions
+  * suppressions planted while the daemon was down
+  * Landlock missing UDP and UNIX-socket rights
+  * log injection via bare LF
+  * group permissions
+  * bidi spoofing
+* **Least privilege:** `ratel web` never runs as root. It drops to `ratel-web`
+  with no supplementary groups, sets no-new-privileges, and disables core
+  dumps and ptrace attach. A **Landlock** sandbox then limits it to
+  *read-only* access to `/var/lib/ratel`, `/var/log/ratel` and `/run/ratel`,
+  plus write access to the feedback inbox `/var/lib/ratel/feedback.d/`.
+  * On kernels with Landlock ABI ≥ 4 it can't open outbound TCP connections or
+    bind other ports. With ABI ≥ 6 it can't reach abstract UNIX sockets or
+    signal other processes. With ABI ≥ 9 / 10 it can't connect to UNIX socket
+    files or send UDP.
+  * At startup it proves the sandbox works: reading `/etc/passwd`, writing
+    outside the inbox, outbound TCP and UDP must all fail. It refuses to start
+    without Landlock unless given `--allow-unsandboxed`.
+  * The daemon writes its files with umask 027 for the `ratel` group, so
+    nobody else can read them.
+* **Network exposure:** in production it listens on a **UNIX socket** in
+  `/run/ratel-web` (owner ratel-web, group stunnel). Unlike a localhost port,
+  no local user can squat it while the dashboard is down and receive the
+  token. stunnel terminates TLS with the Tailscale certificate, so it's
+  reachable on the tailnet only, and passes the real client address with the
+  PROXY protocol. Cookies are `Secure` with the `__Host-` prefix, plus HSTS. A
+  TCP listener defaults to 127.0.0.1 and needs `--allow-remote` for anything
+  else.
+* **Authentication:**
+  * a 256-bit access token, stored only as a SHA-256 hash
+  * login attempts are serialized with a 0.5 s delay on failure; there's no
+    lockout an attacker could trigger against you, and brute force is
+    impossible anyway
+  * 256-bit random session ids in HttpOnly, SameSite=Strict cookies, idle
+    expiry 12 h, absolute expiry 7 days
+* **Every POST** needs a per-session CSRF token *and* an `Origin` matching the
+  `Host`. The `Host` must be in an allowlist, which defeats DNS rebinding.
+* **HTTP handling:**
+  * strict CSP (`default-src 'none'`, scripts and styles only from itself)
+  * frame-deny, nosniff, no-referrer, COOP/CORP, `no-store`
+  * 8 KB header and body limits
+  * an absolute 10 s deadline per request and 20 s per response (no
+    slowloris)
+  * 32 connections at most, no chunked bodies, no bare CR/LF, no duplicate
+    Host/Origin/Cookie headers
+  * incident ids checked against `YYYYMMDD-HHMMSS-kind` before any file access
+* **The frontend** builds all DOM with `textContent` / `createElement`: alert
+  text, DNS names and command lines are attacker-controlled and never parsed
+  as HTML. Bidi overrides and invisible characters are shown as `\u{…}`
+  escapes, so a process name can't disguise itself. It loads no external
+  resources.
+* **Audit:** every login (successful or failed), every rejected request and
+  every acknowledgement is logged to `/var/log/ratel/web.log`, sanitized and
+  rate-limited so the log can't be used to fill the disk.
+* **Tamper visibility:** the root daemon announces every new suppression as an
+  alert. It checks against a root-only ledger, so this includes suppressions
+  planted while it was down. Broad ones are always listed in full.
+  * Wildcards for unidentified processes are rejected, and the feedback inbox
+    is capped (32 files, 1 MB each).
+  * A compromised dashboard can at most mark specific things as false alarms,
+    and that's visible on XMPP immediately.
+* **Tests:**
+  * `python3 train/web_test.py <state> <alerts.jsonl>` runs 57 checks: sandbox,
+    auth, no-lockout, CSRF, Origin, Host, smuggling, slowloris, log flooding,
+    path traversal, suppression scope, UNIX socket + PROXY, every route,
+    headers.
+  * The real-traffic sandbox test checks that planted suppressions are
+    announced and catch-all wildcards rejected.
+
+### How the network models are trained
 
 `train/net/pipeline.sh` takes about an hour on this desktop with the
 defaults. Every source goes through the same Rust engine

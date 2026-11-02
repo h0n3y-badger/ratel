@@ -116,6 +116,12 @@ for p in range(20000, 20150):
     try:
         x = socket.create_connection((SINK, p), timeout=0.2); x.close()
     except OSError: pass
+# ---- a compromised dashboard plants suppressions: the daemon must announce the valid one
+# and reject the catch-all wildcard (both visible as health alerts)
+os.makedirs(state + "/feedback.d", exist_ok=True)
+with open(state + "/feedback.d/web.jsonl", "w") as fh:
+    fh.write(json.dumps({"id": "x", "fp": True, "suppress": [["/usr/bin/planted", "203.0.113.77", "exfil"],
+                                                             ["unattributed", "*", "scan"]]}) + "\n")
 # ---- beacon: every 6 s, small check-in
 for i in range(12):
     try:
@@ -146,7 +152,12 @@ if bea:
 print(f"--- {len(received)} XMPP message(s) via the notify socket; first one:")
 print(received[0] if received else "(none)")
 kinds = {a["kind"] for a in alerts}
-want = {"exfil", "dns", "process", "icmp", "scan", "beacon", "file"}
+want = {"exfil", "dns", "process", "icmp", "scan", "beacon", "file", "health"}
+health = [a for a in alerts if a["kind"] == "health"]
+print("--- health alerts:", [(a["title"], a["evidence"][:2]) for a in health])
+announced = any("suppression" in a["title"] and any("/usr/bin/planted" in e for e in a["evidence"]) for a in health)
+rejected = any("feedback inbox" in a["title"] and any("rejected suppression" in e for e in a["evidence"]) for a in health)
+print("suppression announced:", announced, "| catch-all wildcard rejected:", rejected)
 bad = [a for a in alerts if WEB in a["dest"] or "example.org" in a["dest"]]
 print("missing:", sorted(want - kinds) or "none", "| false alerts on benign:", len(bad))
-sys.exit(0 if want <= kinds and not bad and received and exf else 1)
+sys.exit(0 if want <= kinds and not bad and received and exf and announced and rejected else 1)

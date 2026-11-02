@@ -275,15 +275,12 @@ pub fn ack(args: &[String]) {
     let text = std::fs::read_to_string(&f).unwrap_or_else(|e| die(&format!("{}: {e}", f.display())));
     let fp = kv.contains_key("--fp");
     let any = kv.contains_key("--any-dest");
-    let mut sup: Vec<(String, String, String)> = vec![];
-    for l in text.lines().filter_map(|l| serde_json::from_str::<Value>(l).ok()).filter(|l| l["type"] == "alert") {
-        let a = &l["alert"];
-        let dest = a["dest"].as_str().unwrap_or("").split(' ').next().unwrap_or("").to_string();
-        let k = (a["entity"].as_str().unwrap_or("").to_string(), if any || dest.is_empty() { "*".into() } else { dest },
-            a["kind"].as_str().unwrap_or("*").to_string());
-        if !sup.contains(&k) {
-            sup.push(k);
-        }
+    let alerts: Vec<Value> = text.lines().filter_map(|l| serde_json::from_str::<Value>(l).ok()).filter(|l| l["type"] == "alert")
+        .map(|l| l["alert"].clone()).collect();
+    let sup: Vec<(String, String, String)> = super::incidents::suppressions_for(&alerts, any).into_iter()
+        .map(|[a, b, c]| (a, b, c)).collect();
+    if fp && sup.is_empty() {
+        die("these alerts come from unidentified processes (or have no concrete destination); they can't be silenced — use `ratel ack ID` without --fp");
     }
     let id = f.file_stem().and_then(|s| s.to_str()).unwrap_or(id).to_string();
     let line = serde_json::json!({"id": id, "t": super::now(), "fp": fp, "note": kv.get("--note"),

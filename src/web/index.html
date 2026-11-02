@@ -1,0 +1,33 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="light dark">
+<meta name="referrer" content="no-referrer">
+<title>ratel</title>
+<link rel="icon" href="data:,">
+<link rel="stylesheet" href="/app.css">
+<script src="/app.js" defer></script>
+</head>
+<body>
+<header class="top">
+  <div class="bar">
+    <a class="brand" href="#/">ratel</a>
+    <span id="health" class="pill grey">…</span>
+    <span id="hmeta" class="hmeta"></span>
+    <span class="spacer"></span>
+    <button id="updated" type="button" class="linkbtn small muted" title="Refresh now"></button>
+    <button id="logout" type="button" class="btn small">Log out</button>
+  </div>
+  <nav id="nav" class="nav">
+    <a href="#/" data-route="overview">Overview</a>
+    <a href="#/live" data-route="live">Live</a>
+    <a href="#/alerts" data-route="alerts">Alerts</a>
+    <a href="#/incidents" data-route="incidents">Incidents <span id="opencount" class="count" hidden></span></a>
+  </nav>
+</header>
+<div id="banner" class="banner" role="status" hidden></div>
+<main id="main" class="main"><p class="muted">Loading…</p></main>
+</body>
+</html>

@@ -5,6 +5,7 @@ mod net;
 mod report;
 mod trust;
 mod watch;
+mod web;
 
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicUsize, Ordering};
@@ -35,6 +36,7 @@ usage:
   ratel info                      show embedded model info
   ratel watch [opts]              network behaviour monitor with alerts (see ratel watch --help)
   ratel alerts | explain ID | ack ID [--fp] | status   review what the monitor found
+  ratel web [opts]                hardened dashboard (see ratel web --help)
 
 common opts:
   --jobs N        worker threads (default: number of CPUs, max 4)
@@ -295,6 +297,10 @@ fn main() {
     };
     if cmd == "watch" {
         watch::run(&args[1..]);
+        return;
+    }
+    if cmd == "web" {
+        web::run(&args[1..]);
         return;
     }
     match cmd.as_str() {

@@ -27,5 +27,12 @@ depend() {
 }
 
 start_pre() {
-	checkpath -d -m 0750 -o root:root /var/lib/ratel /var/log/ratel /run/ratel
+	# group "ratel" = the ratel-web dashboard user: read-only access, plus the feedback inbox
+	if getent group ratel >/dev/null; then
+		# setgid: files the daemon creates inherit group ratel (umask 027 -> 0640)
+		checkpath -d -m 2750 -o root:ratel /var/lib/ratel /var/log/ratel /run/ratel /var/lib/ratel/incidents
+		checkpath -d -m 2770 -o root:ratel /var/lib/ratel/feedback.d
+	else
+		checkpath -d -m 0750 -o root:root /var/lib/ratel /var/log/ratel /run/ratel
+	fi
 }

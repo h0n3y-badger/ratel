@@ -1,0 +1,33 @@
+#!/sbin/openrc-run
+# OpenRC service for the `ratel web` dashboard. One-time setup (as root):
+#   addgroup -S ratel && adduser -S -D -H -h /var/empty -s /sbin/nologin -G ratel ratel-web
+#   ratel web --init-token          # prints the access token once; stores only its hash
+#   install -m755 contrib/ratel-web.initd /etc/init.d/ratel-web
+#   rc-service ratel-watch restart  # re-applies directory ownership for group ratel
+#   rc-update add ratel-web default && rc-service ratel-web start
+# It listens on a UNIX socket in /run/ratel-web (owner ratel-web, group stunnel, 0750):
+# unlike a localhost port, no local user can squat it while ratel-web is down and
+# receive your token from stunnel. TLS: contrib/stunnel-ratel-web.conf.
+
+name="ratel-web"
+description="ratel dashboard (unprivileged, Landlock-sandboxed)"
+command="/usr/local/bin/ratel"
+# --host: the name you'll use in the browser (the Tailscale MagicDNS name + stunnel port)
+command_args="web --listen unix:/run/ratel-web/web.sock --proxy-protocol --secure-cookie --host ${RATEL_WEB_HOST:-homelab.tailnet.ts.net:8448}"
+command_user="ratel-web:ratel"
+supervisor=supervise-daemon
+respawn_delay=5
+respawn_max=10
+respawn_period=3600
+output_log="/var/log/ratel/web.log"
+error_log="/var/log/ratel/web.log"
+
+depend() {
+	need net
+	after ratel-watch
+}
+
+start_pre() {
+	checkpath -f -m 0640 -o ratel-web:ratel /var/log/ratel/web.log
+	checkpath -d -m 0750 -o ratel-web:stunnel /run/ratel-web
+}

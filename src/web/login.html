@@ -1,0 +1,26 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="light dark">
+<meta name="referrer" content="no-referrer">
+<title>ratel · sign in</title>
+<link rel="icon" href="data:,">
+<link rel="stylesheet" href="/app.css">
+</head>
+<body class="loginpage">
+<main class="loginbox">
+  <h1 class="brand">ratel</h1>
+  <p class="muted small">homelab security monitor</p>
+  <!-- No script on this page (CSP + no app.js), so the error shows via :target.
+       The server redirects a failed login to /login?error=1#error. -->
+  <p id="error" class="loginerror" role="alert">That token was not accepted. Try again.</p>
+  <form method="post" action="/login">
+    <label for="token">Access token</label>
+    <input id="token" name="token" type="password" autocomplete="current-password" required autofocus>
+    <button type="submit" class="btn primary">Sign in</button>
+  </form>
+</main>
+</body>
+</html>

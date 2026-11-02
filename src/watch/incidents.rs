@@ -344,9 +344,80 @@ pub fn alert_context(a: &Alert, eng: &Engine) -> serde_json::Value {
 // ------------------------------------------------------------------ feedback
 
 /// Suppressions from `ratel ack --fp`: (entity, dest or "*", kind or "*").
-pub fn load_suppressions(state_dir: &Path) -> HashSet<(String, String, String)> {
+/// Entities that stand for "some process we couldn't identify": silencing them with a
+/// wildcard destination would mute whole alert classes host-wide.
+pub fn catch_all_entity(e: &str) -> bool {
+    matches!(e, "unattributed" | "unattributed-udp" | "?" | "" | "ratel") || e.starts_with("uid:") || e.starts_with("host:")
+}
+
+/// The suppressions a false-alarm ack of these alerts may create: (entity, dest|*, kind).
+/// Catch-all entities only ever get a concrete destination; alerts without one can't be silenced.
+pub fn suppressions_for(alerts: &[serde_json::Value], any_dest: bool) -> Vec<[String; 3]> {
+    let mut out: Vec<[String; 3]> = vec![];
+    for a in alerts {
+        let ent = a["entity"].as_str().unwrap_or("").to_string();
+        let kind = a["kind"].as_str().unwrap_or("").to_string();
+        let dest = a["dest"].as_str().unwrap_or("").split(' ').next().unwrap_or("").to_string();
+        if ent.is_empty() || kind.is_empty() || kind == "health" {
+            continue;
+        }
+        let d = if catch_all_entity(&ent) || kind == "process" || kind == "file" {
+            // process / file alerts carry a rule or path in dest; catch-alls need a concrete dest
+            if dest.is_empty() || (catch_all_entity(&ent) && dest.parse::<IpAddr>().is_err() && kind != "dns") {
+                continue;
+            }
+            dest
+        } else if any_dest || dest.is_empty() {
+            "*".to_string()
+        } else {
+            dest
+        };
+        let k = [ent, d, kind];
+        if !out.contains(&k) {
+            out.push(k);
+        }
+    }
+    out
+}
+
+/// Feedback files: feedback.jsonl (`ratel ack`) and feedback.d/*.jsonl (`ratel web`).
+pub fn feedback_files(state_dir: &Path) -> Vec<PathBuf> {
+    let mut v = vec![state_dir.join("feedback.jsonl")];
+    if let Ok(rd) = std::fs::read_dir(state_dir.join("feedback.d")) {
+        let mut d: Vec<PathBuf> = rd.flatten().map(|e| e.path()).filter(|p| p.extension().is_some_and(|x| x == "jsonl")).collect();
+        d.sort();
+        v.extend(d);
+    }
+    v
+}
+
+/// Changes whenever any feedback file changes (cheap to poll).
+pub fn feedback_stamp(state_dir: &Path) -> Vec<(PathBuf, Option<std::time::SystemTime>, u64)> {
+    feedback_files(state_dir).into_iter().map(|p| {
+        let m = std::fs::metadata(&p).ok();
+        let (mt, len) = (m.as_ref().and_then(|m| m.modified().ok()), m.map_or(0, |m| m.len()));
+        (p, mt, len)
+    }).collect()
+}
+
+const FEEDBACK_MAX_FILES: usize = 32;
+const FEEDBACK_MAX_BYTES: u64 = 1 << 20;
+
+/// Suppressions from all feedback files, plus the files that were skipped (too big /
+/// too many: the inbox is writable by the less-privileged dashboard).
+pub fn load_suppressions_checked(state_dir: &Path) -> (HashSet<(String, String, String)>, Vec<String>) {
     let mut s = HashSet::new();
-    if let Ok(t) = std::fs::read_to_string(state_dir.join("feedback.jsonl")) {
+    let mut skipped = vec![];
+    for (n, f) in feedback_files(state_dir).into_iter().enumerate() {
+    let size = std::fs::metadata(&f).map(|m| m.len()).unwrap_or(0);
+    if n >= FEEDBACK_MAX_FILES || size > FEEDBACK_MAX_BYTES {
+        if size > 0 || n >= FEEDBACK_MAX_FILES {
+            skipped.push(format!("{} ({} bytes)", f.display(), size));
+        }
+        continue;
+    }
+    let Ok(t) = std::fs::read_to_string(&f) else { continue };
+    {
         for l in t.lines() {
             let Ok(v) = serde_json::from_str::<serde_json::Value>(l) else { continue };
             if v["fp"].as_bool() != Some(true) {
@@ -354,12 +425,38 @@ pub fn load_suppressions(state_dir: &Path) -> HashSet<(String, String, String)> 
             }
             for k in v["suppress"].as_array().into_iter().flatten() {
                 if let (Some(e), Some(d), Some(kind)) = (k[0].as_str(), k[1].as_str(), k[2].as_str()) {
+                    // defence in depth: never a wildcard for an unidentified process
+                    if catch_all_entity(e) && (d == "*" || d.is_empty()) {
+                        skipped.push(format!("rejected suppression ({kind}, {e}, {d}) from {}", f.display()));
+                        continue;
+                    }
                     s.insert((e.to_string(), d.to_string(), kind.to_string()));
                 }
             }
         }
     }
-    s
+    }
+    (s, skipped)
+}
+
+/// Suppressions already announced (root-only file next to the state); anything not in it
+/// is announced, even when it appeared while the daemon was down.
+pub fn announced(state_dir: &Path) -> HashSet<(String, String, String)> {
+    std::fs::read(state_dir.join("suppressions.announced")).ok()
+        .and_then(|b| serde_json::from_slice::<Vec<(String, String, String)>>(&b).ok())
+        .map(|v| v.into_iter().collect()).unwrap_or_default()
+}
+
+pub fn save_announced(state_dir: &Path, s: &HashSet<(String, String, String)>) {
+    use std::os::unix::fs::OpenOptionsExt;
+    let mut v: Vec<&(String, String, String)> = s.iter().collect();
+    v.sort();
+    let tmp = state_dir.join("suppressions.announced.tmp");
+    if let Ok(mut f) = std::fs::OpenOptions::new().write(true).create(true).truncate(true).mode(0o600).open(&tmp) {
+        if f.write_all(serde_json::to_string(&v).unwrap_or_default().as_bytes()).is_ok() {
+            let _ = std::fs::rename(&tmp, state_dir.join("suppressions.announced"));
+        }
+    }
 }
 
 // ------------------------------------------------------------------ health
