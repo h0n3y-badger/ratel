@@ -1,0 +1,1417 @@
+{
+ "grid": {
+  "max_iter": [
+   160,
+   400,
+   800
+  ],
+  "max_depth": [
+   4,
+   6,
+   8
+  ],
+  "learning_rate": [
+   0.05,
+   0.1
+  ],
+  "min_samples_leaf": [
+   20,
+   80
+  ],
+  "l2_regularization": [
+   1.0
+  ]
+ },
+ "units": {
+  "flow": {
+   "learning_curve": [
+    {
+     "frac": 0.1,
+     "train_rows": 196761,
+     "pos": 44546,
+     "f1": 0.8198066776643171,
+     "recall": 0.6956018786294335,
+     "fpr": 8.290361625574107e-05,
+     "threshold": 0.41000000000000003,
+     "secs": 26.5
+    },
+    {
+     "frac": 0.25,
+     "train_rows": 479878,
+     "pos": 115775,
+     "f1": 0.8670666989484429,
+     "recall": 0.7664090877542049,
+     "fpr": 8.428534319333676e-05,
+     "threshold": 0.43000000000000005,
+     "secs": 28.7
+    },
+    {
+     "frac": 0.5,
+     "train_rows": 995759,
+     "pos": 224772,
+     "f1": 0.887585294079852,
+     "recall": 0.7990074728732388,
+     "fpr": 8.359447972453891e-05,
+     "threshold": 0.27,
+     "secs": 33.2
+    },
+    {
+     "frac": 1.0,
+     "train_rows": 2026673,
+     "pos": 404439,
+     "f1": 0.907203090284791,
+     "recall": 0.831328228026745,
+     "fpr": 8.359447972453891e-05,
+     "threshold": 0.42000000000000004,
+     "secs": 39.7
+    }
+   ],
+   "sweep": [
+    {
+     "stage": 1,
+     "params": {
+      "max_iter": 160,
+      "max_depth": 4,
+      "learning_rate": 0.05,
+      "min_samples_leaf": 20,
+      "l2_regularization": 1.0
+     },
+     "f1": 0.7908987422218187,
+     "recall": 0.6550216320014807,
+     "fpr": 8.221275278694323e-05,
+     "threshold": 0.8,
+     "secs": 21.1
+    },
+    {
+     "stage": 1,
+     "params": {
+      "max_iter": 160,
+      "max_depth": 4,
+      "learning_rate": 0.05,
+      "min_samples_leaf": 80,
+      "l2_regularization": 1.0
+     },
+     "f1": 0.7892926071997987,
+     "recall": 0.652846863938181,
+     "fpr": 8.428534319333676e-05,
+     "threshold": 0.7648472060565574,
+     "secs": 21.3
+    },
+    {
+     "stage": 1,
+     "params": {
+      "max_iter": 160,
+      "max_depth": 4,
+      "learning_rate": 0.1,
+      "min_samples_leaf": 20,
+      "l2_regularization": 1.0
+     },
+     "f1": 0.8707245166844948,
+     "recall": 0.7721352057932119,
+     "fpr": 8.428534319333676e-05,
+     "threshold": 0.36000000000000004,
+     "secs": 28.5
+    },
+    {
+     "stage": 1,
+     "params": {
+      "max_iter": 160,
+      "max_depth": 4,
+      "learning_rate": 0.1,
+      "min_samples_leaf": 80,
+      "l2_regularization": 1.0
+     },
+     "f1": 0.8664436253167209,
+     "recall": 0.7654373828748583,
+     "fpr": 8.428534319333676e-05,
+     "threshold": 0.41000000000000003,
+     "secs": 28.0
+    },
+    {
+     "stage": 1,
+     "params": {
+      "max_iter": 160,
+      "max_depth": 6,
+      "learning_rate": 0.05,
+      "min_samples_leaf": 20,
+      "l2_regularization": 1.0
+     },
+     "f1": 0.853077366402353,
+     "recall": 0.7448464937648936,
+     "fpr": 8.428534319333676e-05,
+     "threshold": 0.5800000000000001,
+     "secs": 24.7
+    },
+    {
+     "stage": 1,
+     "params": {
+      "max_iter": 160,
+      "max_depth": 6,
+      "learning_rate": 0.05,
+      "min_samples_leaf": 80,
+      "l2_regularization": 1.0
+     },
+     "f1": 0.8561366879856229,
+     "recall": 0.7494736598570205,
+     "fpr": 8.083102584934755e-05,
+     "threshold": 0.5900000000000001,
+     "secs": 26.7
+    },
+    {
+     "stage": 1,
+     "params": {
+      "max_iter": 160,
+      "max_depth": 6,
+      "learning_rate": 0.1,
+      "min_samples_leaf": 20,
+      "l2_regularization": 1.0
+     },
+     "f1": 0.8807261161320352,
+     "recall": 0.7879832496587466,
+     "fpr": 8.428534319333676e-05,
+     "threshold": 0.08,
+     "secs": 36.1
+    },
+    {
+     "stage": 1,
+     "params": {
+      "max_iter": 160,
+      "max_depth": 6,
+      "learning_rate": 0.1,
+      "min_samples_leaf": 80,
+      "l2_regularization": 1.0
+     },
+     "f1": 0.9245667432759799,
+     "recall": 0.8609189551858965,
+     "fpr": 8.359447972453891e-05,
+     "threshold": 0.09000000000000001,
+     "secs": 34.9
+    },
+    {
+     "stage": 1,
+     "params": {
+      "max_iter": 160,
+      "max_depth": 8,
+      "learning_rate": 0.05,
+      "min_samples_leaf": 20,
+      "l2_regularization": 1.0
+     },
+     "f1": 0.8632155379584762,
+     "recall": 0.76039377183444,
+     "fpr": 8.221275278694323e-05,
+     "threshold": 0.26,
+     "secs": 31.0
+    },
+    {
+     "stage": 1,
+     "params": {
+      "max_iter": 160,
+      "max_depth": 8,
+      "learning_rate": 0.05,
+      "min_samples_leaf": 80,
+      "l2_regularization": 1.0
+     },
+     "f1": 0.9122176494612171,
+     "recall": 0.8397381023991857,
+     "fpr": 8.083102584934755e-05,
+     "threshold": 0.25,
+     "secs": 32.2
+    },
+    {
+     "stage": 1,
+     "params": {
+      "max_iter": 160,
+      "max_depth": 8,
+      "learning_rate": 0.1,
+      "min_samples_leaf": 20,
+      "l2_regularization": 1.0
+     },
+     "f1": 0.8876481737286774,
+     "recall": 0.7991000161950813,
+     "fpr": 8.290361625574107e-05,
+     "threshold": 0.05,
+     "secs": 41.7
+    },
+    {
+     "stage": 1,
+     "params": {
+      "max_iter": 160,
+      "max_depth": 8,
+      "learning_rate": 0.1,
+      "min_samples_leaf": 80,
+      "l2_regularization": 1.0
+     },
+     "f1": 0.9238706148529375,
+     "recall": 0.859704324086713,
+     "fpr": 8.290361625574107e-05,
+     "threshold": 0.05,
+     "secs": 40.8
+    },
+    {
+     "stage": 1,
+     "params": {
+      "max_iter": 400,
+      "max_depth": 4,
+      "learning_rate": 0.05,
+      "min_samples_leaf": 20,
+      "l2_regularization": 1.0
+     },
+     "f1": 0.8823111684958037,
+     "recall": 0.7904934872637254,
+     "fpr": 8.221275278694323e-05,
+     "threshold": 0.22999999999999998,
+     "secs": 56.2
+    },
+    {
+     "stage": 1,
+     "params": {
+      "max_iter": 400,
+      "max_depth": 4,
+      "learning_rate": 0.05,
+      "min_samples_leaf": 80,
+      "l2_regularization": 1.0
+     },
+     "f1": 0.8793206120705279,
+     "recall": 0.785739074104065,
+     "fpr": 8.428534319333676e-05,
+     "threshold": 0.22,
+     "secs": 51.3
+    },
+    {
+     "stage": 1,
+     "params": {
+      "max_iter": 400,
+      "max_depth": 4,
+      "learning_rate": 0.1,
+      "min_samples_leaf": 20,
+      "l2_regularization": 1.0
+     },
+     "f1": 0.9148348032117941,
+     "recall": 0.8402355227540893,
+     "fpr": 7.461325463016697e-05,
+     "threshold": 0.05,
+     "secs": 65.3
+    },
+    {
+     "stage": 1,
+     "params": {
+      "max_iter": 400,
+      "max_depth": 4,
+      "learning_rate": 0.1,
+      "min_samples_leaf": 80,
+      "l2_regularization": 1.0
+     },
+     "f1": 0.9261551820380822,
+     "recall": 0.8523586979154617,
+     "fpr": 7.18498007549756e-05,
+     "threshold": 0.05,
+     "secs": 63.9
+    },
+    {
+     "stage": 1,
+     "params": {
+      "max_iter": 400,
+      "max_depth": 6,
+      "learning_rate": 0.05,
+      "min_samples_leaf": 20,
+      "l2_regularization": 1.0
+     },
+     "f1": 0.8856162664212199,
+     "recall": 0.7913726488212295,
+     "fpr": 8.014016238054971e-05,
+     "threshold": 0.05,
+     "secs": 70.5
+    },
+    {
+     "stage": 1,
+     "params": {
+      "max_iter": 400,
+      "max_depth": 6,
+      "learning_rate": 0.05,
+      "min_samples_leaf": 80,
+      "l2_regularization": 1.0
+     },
+     "f1": 0.9282503992967425,
+     "recall": 0.8672697406473405,
+     "fpr": 8.014016238054971e-05,
+     "threshold": 0.06,
+     "secs": 70.2
+    },
+    {
+     "stage": 1,
+     "params": {
+      "max_iter": 400,
+      "max_depth": 6,
+      "learning_rate": 0.1,
+      "min_samples_leaf": 20,
+      "l2_regularization": 1.0
+     },
+     "f1": 0.903747142305281,
+     "recall": 0.8023274645443398,
+     "fpr": 6.079598525421012e-05,
+     "threshold": 0.05,
+     "secs": 73.4
+    },
+    {
+     "stage": 1,
+     "params": {
+      "max_iter": 400,
+      "max_depth": 6,
+      "learning_rate": 0.1,
+      "min_samples_leaf": 80,
+      "l2_regularization": 1.0
+     },
+     "f1": 0.9329100268162623,
+     "recall": 0.8696758670152465,
+     "fpr": 5.941425831661444e-05,
+     "threshold": 0.05,
+     "secs": 72.3
+    },
+    {
+     "stage": 1,
+     "params": {
+      "max_iter": 400,
+      "max_depth": 8,
+      "learning_rate": 0.05,
+      "min_samples_leaf": 20,
+      "l2_regularization": 1.0
+     },
+     "f1": 0.9064242898920547,
+     "recall": 0.8032876015084561,
+     "fpr": 7.046807381737992e-05,
+     "threshold": 0.05,
+     "secs": 80.4
+    },
+    {
+     "stage": 1,
+     "params": {
+      "max_iter": 400,
+      "max_depth": 8,
+      "learning_rate": 0.05,
+      "min_samples_leaf": 80,
+      "l2_regularization": 1.0
+     },
+     "f1": 0.9252267408294896,
+     "recall": 0.8576452351757167,
+     "fpr": 6.977721034858208e-05,
+     "threshold": 0.05,
+     "secs": 123.1
+    },
+    {
+     "stage": 1,
+     "params": {
+      "max_iter": 400,
+      "max_depth": 8,
+      "learning_rate": 0.1,
+      "min_samples_leaf": 20,
+      "l2_regularization": 1.0
+     },
+     "f1": 0.8946276110014879,
+     "recall": 0.7882377437938135,
+     "fpr": 6.148684872300797e-05,
+     "threshold": 0.05,
+     "secs": 142.2
+    },
+    {
+     "stage": 1,
+     "params": {
+      "max_iter": 400,
+      "max_depth": 8,
+      "learning_rate": 0.1,
+      "min_samples_leaf": 80,
+      "l2_regularization": 1.0
+     },
+     "f1": 0.9267445825712248,
+     "recall": 0.8549499109270527,
+     "fpr": 6.010512178541228e-05,
+     "threshold": 0.05,
+     "secs": 139.8
+    },
+    {
+     "stage": 1,
+     "params": {
+      "max_iter": 800,
+      "max_depth": 4,
+      "learning_rate": 0.05,
+      "min_samples_leaf": 20,
+      "l2_regularization": 1.0
+     },
+     "f1": 0.9253277386036349,
+     "recall": 0.858165791361081,
+     "fpr": 7.599498156776265e-05,
+     "threshold": 0.05,
+     "secs": 160.3
+    },
+    {
+     "stage": 1,
+     "params": {
+      "max_iter": 800,
+      "max_depth": 4,
+      "learning_rate": 0.05,
+      "min_samples_leaf": 80,
+      "l2_regularization": 1.0
+     },
+     "f1": 0.9156797043810478,
+     "recall": 0.8424218587326192,
+     "fpr": 7.737670850535833e-05,
+     "threshold": 0.05,
+     "secs": 156.9
+    },
+    {
+     "stage": 1,
+     "params": {
+      "max_iter": 800,
+      "max_depth": 4,
+      "learning_rate": 0.1,
+      "min_samples_leaf": 20,
+      "l2_regularization": 1.0
+     },
+     "f1": 0.9273936186693271,
+     "recall": 0.8508664368507508,
+     "fpr": 6.010512178541228e-05,
+     "threshold": 0.05,
+     "secs": 124.1
+    },
+    {
+     "stage": 1,
+     "params": {
+      "max_iter": 800,
+      "max_depth": 4,
+      "learning_rate": 0.1,
+      "min_samples_leaf": 80,
+      "l2_regularization": 1.0
+     },
+     "f1": 0.931529173559841,
+     "recall": 0.8600860652893135,
+     "fpr": 5.941425831661444e-05,
+     "threshold": 0.05,
+     "secs": 99.9
+    },
+    {
+     "stage": 1,
+     "params": {
+      "max_iter": 800,
+      "max_depth": 6,
+      "learning_rate": 0.05,
+      "min_samples_leaf": 20,
+      "l2_regularization": 1.0
+     },
+     "f1": 0.8954625795213088,
+     "recall": 0.7949008629664762,
+     "fpr": 6.35594391294015e-05,
+     "threshold": 0.05,
+     "secs": 121.6
+    },
+    {
+     "stage": 1,
+     "params": {
+      "max_iter": 800,
+      "max_depth": 6,
+      "learning_rate": 0.05,
+      "min_samples_leaf": 80,
+      "l2_regularization": 1.0
+     },
+     "f1": 0.9313463426077401,
+     "recall": 0.8670615181731949,
+     "fpr": 6.148684872300797e-05,
+     "threshold": 0.05,
+     "secs": 123.2
+    },
+    {
+     "stage": 1,
+     "params": {
+      "max_iter": 800,
+      "max_depth": 6,
+      "learning_rate": 0.1,
+      "min_samples_leaf": 20,
+      "l2_regularization": 1.0
+     },
+     "f1": 0.9023149616287182,
+     "recall": 0.8027554774078616,
+     "fpr": 5.941425831661444e-05,
+     "threshold": 0.05,
+     "secs": 128.1
+    },
+    {
+     "stage": 1,
+     "params": {
+      "max_iter": 800,
+      "max_depth": 6,
+      "learning_rate": 0.1,
+      "min_samples_leaf": 80,
+      "l2_regularization": 1.0
+     },
+     "f1": 0.9313723674217868,
+     "recall": 0.8640191564676214,
+     "fpr": 5.803253137901875e-05,
+     "threshold": 0.05,
+     "secs": 128.4
+    },
+    {
+     "stage": 1,
+     "params": {
+      "max_iter": 800,
+      "max_depth": 8,
+      "learning_rate": 0.05,
+      "min_samples_leaf": 20,
+      "l2_regularization": 1.0
+     },
+     "f1": 0.8949058615472033,
+     "recall": 0.7926104157508734,
+     "fpr": 6.079598525421012e-05,
+     "threshold": 0.05,
+     "secs": 154.7
+    },
+    {
+     "stage": 1,
+     "params": {
+      "max_iter": 800,
+      "max_depth": 8,
+      "learning_rate": 0.05,
+      "min_samples_leaf": 80,
+      "l2_regularization": 1.0
+     },
+     "f1": 0.9272766709013727,
+     "recall": 0.857622099345256,
+     "fpr": 5.665080444142307e-05,
+     "threshold": 0.05,
+     "secs": 155.1
+    },
+    {
+     "stage": 1,
+     "params": {
+      "max_iter": 800,
+      "max_depth": 8,
+      "learning_rate": 0.1,
+      "min_samples_leaf": 20,
+      "l2_regularization": 1.0
+     },
+     "f1": 0.8907859234905436,
+     "recall": 0.7859241607477501,
+     "fpr": 5.872339484781659e-05,
+     "threshold": 0.05,
+     "secs": 154.7
+    },
+    {
+     "stage": 1,
+     "params": {
+      "max_iter": 800,
+      "max_depth": 8,
+      "learning_rate": 0.1,
+      "min_samples_leaf": 80,
+      "l2_regularization": 1.0
+     },
+     "f1": 0.9247848911254,
+     "recall": 0.8488767554311362,
+     "fpr": 5.734166791022091e-05,
+     "threshold": 0.05,
+     "secs": 161.0
+    },
+    {
+     "stage": 2,
+     "params": {
+      "max_iter": 400,
+      "max_depth": 6,
+      "learning_rate": 0.1,
+      "min_samples_leaf": 80,
+      "l2_regularization": 1.0
+     },
+     "f1": 0.9327882397918286,
+     "recall": 0.8397381023991857,
+     "fpr": 5.803253137901875e-05,
+     "threshold": 0.05,
+     "model_kib": 909,
+     "secs": 105.3
+    },
+    {
+     "stage": 2,
+     "params": {
+      "max_iter": 800,
+      "max_depth": 4,
+      "learning_rate": 0.1,
+      "min_samples_leaf": 80,
+      "l2_regularization": 1.0
+     },
+     "f1": 0.9532149596013353,
+     "recall": 0.9050274159590959,
+     "fpr": 6.079598525421012e-05,
+     "threshold": 0.05,
+     "model_kib": 879,
+     "secs": 143.7
+    },
+    {
+     "stage": 2,
+     "params": {
+      "max_iter": 800,
+      "max_depth": 6,
+      "learning_rate": 0.1,
+      "min_samples_leaf": 80,
+      "l2_regularization": 1.0
+     },
+     "f1": 0.9318009270975428,
+     "recall": 0.8445387872197673,
+     "fpr": 5.595994097262523e-05,
+     "threshold": 0.05,
+     "model_kib": 1899,
+     "secs": 184.4
+    },
+    {
+     "stage": 2,
+     "params": {
+      "max_iter": 800,
+      "max_depth": 6,
+      "learning_rate": 0.05,
+      "min_samples_leaf": 80,
+      "l2_regularization": 1.0
+     },
+     "f1": 0.9356038941470944,
+     "recall": 0.8588020266987484,
+     "fpr": 5.941425831661444e-05,
+     "threshold": 0.05,
+     "model_kib": 1836,
+     "secs": 230.2
+    },
+    {
+     "stage": 2,
+     "params": {
+      "max_iter": 400,
+      "max_depth": 6,
+      "learning_rate": 0.05,
+      "min_samples_leaf": 80,
+      "l2_regularization": 1.0
+     },
+     "f1": 0.9333505856546948,
+     "recall": 0.8696758670152465,
+     "fpr": 6.908634687978422e-05,
+     "threshold": 0.05,
+     "model_kib": 863,
+     "secs": 151.2
+    },
+    {
+     "stage": 2,
+     "params": {
+      "max_iter": 800,
+      "max_depth": 4,
+      "learning_rate": 0.1,
+      "min_samples_leaf": 20,
+      "l2_regularization": 1.0
+     },
+     "f1": 0.9517222165020259,
+     "recall": 0.9046109710108045,
+     "fpr": 6.010512178541228e-05,
+     "threshold": 0.05,
+     "model_kib": 880,
+     "secs": 233.8
+    }
+   ],
+   "best": {
+    "params": {
+     "max_iter": 800,
+     "max_depth": 4,
+     "learning_rate": 0.1,
+     "min_samples_leaf": 80,
+     "l2_regularization": 1.0
+    },
+    "f1": 0.9532149596013353,
+    "recall": 0.9050274159590959,
+    "fpr": 6.079598525421012e-05,
+    "threshold": 0.05
+   }
+  },
+  "dns": {
+   "learning_curve": [
+    {
+     "frac": 0.1,
+     "train_rows": 84175,
+     "pos": 555,
+     "f1": 0.9984222981856429,
+     "recall": 0.9968495668154371,
+     "fpr": 0.0,
+     "threshold": 0.05,
+     "secs": 8.0
+    },
+    {
+     "frac": 0.25,
+     "train_rows": 204133,
+     "pos": 948,
+     "f1": 0.9984222981856429,
+     "recall": 0.9968495668154371,
+     "fpr": 0.0,
+     "threshold": 0.05,
+     "secs": 7.6
+    },
+    {
+     "frac": 0.5,
+     "train_rows": 398289,
+     "pos": 2071,
+     "f1": 0.9988171901695361,
+     "recall": 0.9976371751115778,
+     "fpr": 0.0,
+     "threshold": 0.05,
+     "secs": 8.0
+    },
+    {
+     "frac": 1.0,
+     "train_rows": 807734,
+     "pos": 4250,
+     "f1": 0.9988171901695361,
+     "recall": 0.9976371751115778,
+     "fpr": 0.0,
+     "threshold": 0.05,
+     "secs": 9.9
+    }
+   ],
+   "sweep": [
+    {
+     "stage": 1,
+     "params": {
+      "max_iter": 160,
+      "max_depth": 4,
+      "learning_rate": 0.05,
+      "min_samples_leaf": 20,
+      "l2_regularization": 1.0
+     },
+     "f1": 0.9978952907129702,
+     "recall": 0.9957994224205828,
+     "fpr": 0.0,
+     "threshold": 0.05,
+     "secs": 8.8
+    },
+    {
+     "stage": 1,
+     "params": {
+      "max_iter": 160,
+      "max_depth": 4,
+      "learning_rate": 0.05,
+      "min_samples_leaf": 80,
+      "l2_regularization": 1.0
+     },
+     "f1": 0.9981588637559179,
+     "recall": 0.99632449461801,
+     "fpr": 0.0,
+     "threshold": 0.05,
+     "secs": 8.1
+    },
+    {
+     "stage": 1,
+     "params": {
+      "max_iter": 160,
+      "max_depth": 4,
+      "learning_rate": 0.1,
+      "min_samples_leaf": 20,
+      "l2_regularization": 1.0
+     },
+     "f1": 0.9982905982905983,
+     "recall": 0.9965870307167235,
+     "fpr": 0.0,
+     "threshold": 0.05,
+     "secs": 7.6
+    },
+    {
+     "stage": 1,
+     "params": {
+      "max_iter": 160,
+      "max_depth": 4,
+      "learning_rate": 0.1,
+      "min_samples_leaf": 80,
+      "l2_regularization": 1.0
+     },
+     "f1": 0.9985539634547128,
+     "recall": 0.9971121029141506,
+     "fpr": 0.0,
+     "threshold": 0.05,
+     "secs": 7.5
+    },
+    {
+     "stage": 1,
+     "params": {
+      "max_iter": 160,
+      "max_depth": 6,
+      "learning_rate": 0.05,
+      "min_samples_leaf": 20,
+      "l2_regularization": 1.0
+     },
+     "f1": 0.9977634521773451,
+     "recall": 0.9955368863218692,
+     "fpr": 0.0,
+     "threshold": 0.05,
+     "secs": 10.7
+    },
+    {
+     "stage": 1,
+     "params": {
+      "max_iter": 160,
+      "max_depth": 6,
+      "learning_rate": 0.05,
+      "min_samples_leaf": 80,
+      "l2_regularization": 1.0
+     },
+     "f1": 0.9981588637559179,
+     "recall": 0.99632449461801,
+     "fpr": 0.0,
+     "threshold": 0.05,
+     "secs": 9.6
+    },
+    {
+     "stage": 1,
+     "params": {
+      "max_iter": 160,
+      "max_depth": 6,
+      "learning_rate": 0.1,
+      "min_samples_leaf": 20,
+      "l2_regularization": 1.0
+     },
+     "f1": 0.9981588637559179,
+     "recall": 0.99632449461801,
+     "fpr": 0.0,
+     "threshold": 0.05,
+     "secs": 8.2
+    },
+    {
+     "stage": 1,
+     "params": {
+      "max_iter": 160,
+      "max_depth": 6,
+      "learning_rate": 0.1,
+      "min_samples_leaf": 80,
+      "l2_regularization": 1.0
+     },
+     "f1": 0.9985539634547128,
+     "recall": 0.9971121029141506,
+     "fpr": 0.0,
+     "threshold": 0.05,
+     "secs": 7.8
+    },
+    {
+     "stage": 1,
+     "params": {
+      "max_iter": 160,
+      "max_depth": 8,
+      "learning_rate": 0.05,
+      "min_samples_leaf": 20,
+      "l2_regularization": 1.0
+     },
+     "f1": 0.9977634521773451,
+     "recall": 0.9955368863218692,
+     "fpr": 0.0,
+     "threshold": 0.05,
+     "secs": 8.9
+    },
+    {
+     "stage": 1,
+     "params": {
+      "max_iter": 160,
+      "max_depth": 8,
+      "learning_rate": 0.05,
+      "min_samples_leaf": 80,
+      "l2_regularization": 1.0
+     },
+     "f1": 0.9981588637559179,
+     "recall": 0.99632449461801,
+     "fpr": 0.0,
+     "threshold": 0.05,
+     "secs": 10.0
+    },
+    {
+     "stage": 1,
+     "params": {
+      "max_iter": 160,
+      "max_depth": 8,
+      "learning_rate": 0.1,
+      "min_samples_leaf": 20,
+      "l2_regularization": 1.0
+     },
+     "f1": 0.9981588637559179,
+     "recall": 0.99632449461801,
+     "fpr": 0.0,
+     "threshold": 0.05,
+     "secs": 8.7
+    },
+    {
+     "stage": 1,
+     "params": {
+      "max_iter": 160,
+      "max_depth": 8,
+      "learning_rate": 0.1,
+      "min_samples_leaf": 80,
+      "l2_regularization": 1.0
+     },
+     "f1": 0.9985539634547128,
+     "recall": 0.9971121029141506,
+     "fpr": 0.0,
+     "threshold": 0.05,
+     "secs": 7.9
+    },
+    {
+     "stage": 1,
+     "params": {
+      "max_iter": 400,
+      "max_depth": 4,
+      "learning_rate": 0.05,
+      "min_samples_leaf": 20,
+      "l2_regularization": 1.0
+     },
+     "f1": 0.9982905982905983,
+     "recall": 0.9965870307167235,
+     "fpr": 0.0,
+     "threshold": 0.05,
+     "secs": 17.6
+    },
+    {
+     "stage": 1,
+     "params": {
+      "max_iter": 400,
+      "max_depth": 4,
+      "learning_rate": 0.05,
+      "min_samples_leaf": 80,
+      "l2_regularization": 1.0
+     },
+     "f1": 0.9985539634547128,
+     "recall": 0.9971121029141506,
+     "fpr": 0.0,
+     "threshold": 0.05,
+     "secs": 17.4
+    },
+    {
+     "stage": 1,
+     "params": {
+      "max_iter": 400,
+      "max_depth": 4,
+      "learning_rate": 0.1,
+      "min_samples_leaf": 20,
+      "l2_regularization": 1.0
+     },
+     "f1": 0.9982905982905983,
+     "recall": 0.9965870307167235,
+     "fpr": 0.0,
+     "threshold": 0.05,
+     "secs": 15.3
+    },
+    {
+     "stage": 1,
+     "params": {
+      "max_iter": 400,
+      "max_depth": 4,
+      "learning_rate": 0.1,
+      "min_samples_leaf": 80,
+      "l2_regularization": 1.0
+     },
+     "f1": 0.9985539634547128,
+     "recall": 0.9971121029141506,
+     "fpr": 0.0,
+     "threshold": 0.05,
+     "secs": 15.1
+    },
+    {
+     "stage": 1,
+     "params": {
+      "max_iter": 400,
+      "max_depth": 6,
+      "learning_rate": 0.05,
+      "min_samples_leaf": 20,
+      "l2_regularization": 1.0
+     },
+     "f1": 0.9981588637559179,
+     "recall": 0.99632449461801,
+     "fpr": 0.0,
+     "threshold": 0.05,
+     "secs": 16.6
+    },
+    {
+     "stage": 1,
+     "params": {
+      "max_iter": 400,
+      "max_depth": 6,
+      "learning_rate": 0.05,
+      "min_samples_leaf": 80,
+      "l2_regularization": 1.0
+     },
+     "f1": 0.9985539634547128,
+     "recall": 0.9971121029141506,
+     "fpr": 0.0,
+     "threshold": 0.05,
+     "secs": 17.3
+    },
+    {
+     "stage": 1,
+     "params": {
+      "max_iter": 400,
+      "max_depth": 6,
+      "learning_rate": 0.1,
+      "min_samples_leaf": 20,
+      "l2_regularization": 1.0
+     },
+     "f1": 0.9981588637559179,
+     "recall": 0.99632449461801,
+     "fpr": 0.0,
+     "threshold": 0.05,
+     "secs": 15.0
+    },
+    {
+     "stage": 1,
+     "params": {
+      "max_iter": 400,
+      "max_depth": 6,
+      "learning_rate": 0.1,
+      "min_samples_leaf": 80,
+      "l2_regularization": 1.0
+     },
+     "f1": 0.9985539634547128,
+     "recall": 0.9971121029141506,
+     "fpr": 0.0,
+     "threshold": 0.05,
+     "secs": 14.5
+    },
+    {
+     "stage": 1,
+     "params": {
+      "max_iter": 400,
+      "max_depth": 8,
+      "learning_rate": 0.05,
+      "min_samples_leaf": 20,
+      "l2_regularization": 1.0
+     },
+     "f1": 0.9981588637559179,
+     "recall": 0.99632449461801,
+     "fpr": 0.0,
+     "threshold": 0.05,
+     "secs": 17.2
+    },
+    {
+     "stage": 1,
+     "params": {
+      "max_iter": 400,
+      "max_depth": 8,
+      "learning_rate": 0.05,
+      "min_samples_leaf": 80,
+      "l2_regularization": 1.0
+     },
+     "f1": 0.9985539634547128,
+     "recall": 0.9971121029141506,
+     "fpr": 0.0,
+     "threshold": 0.05,
+     "secs": 16.9
+    },
+    {
+     "stage": 1,
+     "params": {
+      "max_iter": 400,
+      "max_depth": 8,
+      "learning_rate": 0.1,
+      "min_samples_leaf": 20,
+      "l2_regularization": 1.0
+     },
+     "f1": 0.9981588637559179,
+     "recall": 0.99632449461801,
+     "fpr": 0.0,
+     "threshold": 0.05,
+     "secs": 16.1
+    },
+    {
+     "stage": 1,
+     "params": {
+      "max_iter": 400,
+      "max_depth": 8,
+      "learning_rate": 0.1,
+      "min_samples_leaf": 80,
+      "l2_regularization": 1.0
+     },
+     "f1": 0.9985539634547128,
+     "recall": 0.9971121029141506,
+     "fpr": 0.0,
+     "threshold": 0.05,
+     "secs": 15.3
+    },
+    {
+     "stage": 1,
+     "params": {
+      "max_iter": 800,
+      "max_depth": 4,
+      "learning_rate": 0.05,
+      "min_samples_leaf": 20,
+      "l2_regularization": 1.0
+     },
+     "f1": 0.9985539634547128,
+     "recall": 0.9971121029141506,
+     "fpr": 0.0,
+     "threshold": 0.05,
+     "secs": 27.5
+    },
+    {
+     "stage": 1,
+     "params": {
+      "max_iter": 800,
+      "max_depth": 4,
+      "learning_rate": 0.05,
+      "min_samples_leaf": 80,
+      "l2_regularization": 1.0
+     },
+     "f1": 0.9985539634547128,
+     "recall": 0.9971121029141506,
+     "fpr": 0.0,
+     "threshold": 0.05,
+     "secs": 27.9
+    },
+    {
+     "stage": 1,
+     "params": {
+      "max_iter": 800,
+      "max_depth": 4,
+      "learning_rate": 0.1,
+      "min_samples_leaf": 20,
+      "l2_regularization": 1.0
+     },
+     "f1": 0.9985539634547128,
+     "recall": 0.9971121029141506,
+     "fpr": 0.0,
+     "threshold": 0.05,
+     "secs": 26.8
+    },
+    {
+     "stage": 1,
+     "params": {
+      "max_iter": 800,
+      "max_depth": 4,
+      "learning_rate": 0.1,
+      "min_samples_leaf": 80,
+      "l2_regularization": 1.0
+     },
+     "f1": 0.9985539634547128,
+     "recall": 0.9971121029141506,
+     "fpr": 0.0,
+     "threshold": 0.05,
+     "secs": 26.3
+    },
+    {
+     "stage": 1,
+     "params": {
+      "max_iter": 800,
+      "max_depth": 6,
+      "learning_rate": 0.05,
+      "min_samples_leaf": 20,
+      "l2_regularization": 1.0
+     },
+     "f1": 0.9981588637559179,
+     "recall": 0.99632449461801,
+     "fpr": 0.0,
+     "threshold": 0.05,
+     "secs": 29.1
+    },
+    {
+     "stage": 1,
+     "params": {
+      "max_iter": 800,
+      "max_depth": 6,
+      "learning_rate": 0.05,
+      "min_samples_leaf": 80,
+      "l2_regularization": 1.0
+     },
+     "f1": 0.9985539634547128,
+     "recall": 0.9971121029141506,
+     "fpr": 0.0,
+     "threshold": 0.05,
+     "secs": 29.0
+    },
+    {
+     "stage": 1,
+     "params": {
+      "max_iter": 800,
+      "max_depth": 6,
+      "learning_rate": 0.1,
+      "min_samples_leaf": 20,
+      "l2_regularization": 1.0
+     },
+     "f1": 0.9982905982905983,
+     "recall": 0.9965870307167235,
+     "fpr": 0.0,
+     "threshold": 0.05,
+     "secs": 25.6
+    },
+    {
+     "stage": 1,
+     "params": {
+      "max_iter": 800,
+      "max_depth": 6,
+      "learning_rate": 0.1,
+      "min_samples_leaf": 80,
+      "l2_regularization": 1.0
+     },
+     "f1": 0.9985539634547128,
+     "recall": 0.9971121029141506,
+     "fpr": 0.0,
+     "threshold": 0.05,
+     "secs": 27.4
+    },
+    {
+     "stage": 1,
+     "params": {
+      "max_iter": 800,
+      "max_depth": 8,
+      "learning_rate": 0.05,
+      "min_samples_leaf": 20,
+      "l2_regularization": 1.0
+     },
+     "f1": 0.9981588637559179,
+     "recall": 0.99632449461801,
+     "fpr": 0.0,
+     "threshold": 0.05,
+     "secs": 29.9
+    },
+    {
+     "stage": 1,
+     "params": {
+      "max_iter": 800,
+      "max_depth": 8,
+      "learning_rate": 0.05,
+      "min_samples_leaf": 80,
+      "l2_regularization": 1.0
+     },
+     "f1": 0.9985539634547128,
+     "recall": 0.9971121029141506,
+     "fpr": 0.0,
+     "threshold": 0.05,
+     "secs": 28.2
+    },
+    {
+     "stage": 1,
+     "params": {
+      "max_iter": 800,
+      "max_depth": 8,
+      "learning_rate": 0.1,
+      "min_samples_leaf": 20,
+      "l2_regularization": 1.0
+     },
+     "f1": 0.9982905982905983,
+     "recall": 0.9965870307167235,
+     "fpr": 0.0,
+     "threshold": 0.05,
+     "secs": 27.1
+    },
+    {
+     "stage": 1,
+     "params": {
+      "max_iter": 800,
+      "max_depth": 8,
+      "learning_rate": 0.1,
+      "min_samples_leaf": 80,
+      "l2_regularization": 1.0
+     },
+     "f1": 0.9985539634547128,
+     "recall": 0.9971121029141506,
+     "fpr": 0.0,
+     "threshold": 0.05,
+     "secs": 27.2
+    },
+    {
+     "stage": 2,
+     "params": {
+      "max_iter": 160,
+      "max_depth": 4,
+      "learning_rate": 0.1,
+      "min_samples_leaf": 80,
+      "l2_regularization": 1.0
+     },
+     "f1": 0.9988171901695361,
+     "recall": 0.9976371751115778,
+     "fpr": 0.0,
+     "threshold": 0.05,
+     "model_kib": 65,
+     "secs": 10.8
+    },
+    {
+     "stage": 2,
+     "params": {
+      "max_iter": 160,
+      "max_depth": 6,
+      "learning_rate": 0.1,
+      "min_samples_leaf": 80,
+      "l2_regularization": 1.0
+     },
+     "f1": 0.9988171901695361,
+     "recall": 0.9976371751115778,
+     "fpr": 0.0,
+     "threshold": 0.05,
+     "model_kib": 90,
+     "secs": 19.3
+    },
+    {
+     "stage": 2,
+     "params": {
+      "max_iter": 160,
+      "max_depth": 8,
+      "learning_rate": 0.1,
+      "min_samples_leaf": 80,
+      "l2_regularization": 1.0
+     },
+     "f1": 0.9988171901695361,
+     "recall": 0.9976371751115778,
+     "fpr": 0.0,
+     "threshold": 0.05,
+     "model_kib": 101,
+     "secs": 15.1
+    },
+    {
+     "stage": 2,
+     "params": {
+      "max_iter": 400,
+      "max_depth": 4,
+      "learning_rate": 0.05,
+      "min_samples_leaf": 80,
+      "l2_regularization": 1.0
+     },
+     "f1": 0.9988171901695361,
+     "recall": 0.9976371751115778,
+     "fpr": 0.0,
+     "threshold": 0.05,
+     "model_kib": 151,
+     "secs": 29.0
+    },
+    {
+     "stage": 2,
+     "params": {
+      "max_iter": 400,
+      "max_depth": 4,
+      "learning_rate": 0.1,
+      "min_samples_leaf": 80,
+      "l2_regularization": 1.0
+     },
+     "f1": 0.9988171901695361,
+     "recall": 0.9976371751115778,
+     "fpr": 0.0,
+     "threshold": 0.05,
+     "model_kib": 129,
+     "secs": 43.5
+    },
+    {
+     "stage": 2,
+     "params": {
+      "max_iter": 400,
+      "max_depth": 6,
+      "learning_rate": 0.05,
+      "min_samples_leaf": 80,
+      "l2_regularization": 1.0
+     },
+     "f1": 0.9988171901695361,
+     "recall": 0.9976371751115778,
+     "fpr": 0.0,
+     "threshold": 0.05,
+     "model_kib": 204,
+     "secs": 25.3
+    }
+   ],
+   "best": {
+    "params": {
+     "max_iter": 160,
+     "max_depth": 4,
+     "learning_rate": 0.1,
+     "min_samples_leaf": 80,
+     "l2_regularization": 1.0
+    },
+    "f1": 0.9988171901695361,
+    "recall": 0.9976371751115778,
+    "fpr": 0.0,
+    "threshold": 0.05
+   }
+  }
+ }
+}

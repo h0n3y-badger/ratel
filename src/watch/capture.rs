@@ -16,8 +16,9 @@ pub const UDP_SAMPLE: u32 = 16;
 
 pub enum Pkt {
     Syn { src: IpAddr, dst: IpAddr, sport: u16, dport: u16 },
-    Dns { src: IpAddr, sport: u16, msg: DnsMsg },
-    Udp { dst: IpAddr, sport: u16, dport: u16, len: u32 },
+    Dns { src: IpAddr, sport: u16, dport: u16, msg: DnsMsg },
+    /// `inbound`: arrived from `src`; otherwise sent to `dst`.
+    Udp { src: IpAddr, dst: IpAddr, sport: u16, dport: u16, len: u32, inbound: bool },
     Icmp { dst: IpAddr, len: u32 },
 }
 
@@ -180,8 +181,14 @@ impl Capture {
             if on_lo && (!loopback || !outgoing) {
                 continue; // loopback packets appear twice; and are ignored outside tests
             }
-            if let Some(p) = parse(&self.buf[..n as usize]) {
+            if let Some(mut p) = parse(&self.buf[..n as usize]) {
+                let host = sll.sll_pkttype == libc::PACKET_HOST as u8;
+                if let Pkt::Udp { inbound, .. } = &mut p {
+                    *inbound = !outgoing && host && !on_lo;
+                }
                 let keep = match &p {
+                    // inbound UDP samples balance the outbound ones (VPN / QUIC aren't floods)
+                    Pkt::Udp { inbound: true, .. } => true,
                     // DNS answers arrive; everything else we look at leaves this host.
                     Pkt::Dns { msg, .. } if msg.resp => on_lo || sll.sll_pkttype == libc::PACKET_HOST as u8,
                     _ => outgoing,
@@ -202,6 +209,9 @@ fn parse(b: &[u8]) -> Option<Pkt> {
                 return None;
             }
             let ihl = (b[0] & 0xf) as usize * 4;
+            if ihl < 20 {
+                return None; // IHL < 5: ports would be read from inside the IP header
+            }
             (IpAddr::V4(Ipv4Addr::new(b[12], b[13], b[14], b[15])), IpAddr::V4(Ipv4Addr::new(b[16], b[17], b[18], b[19])),
                 b[9], ihl, u16::from_be_bytes([b[2], b[3]]) as usize)
         }
@@ -226,9 +236,9 @@ fn parse(b: &[u8]) -> Option<Pkt> {
             let dport = u16::from_be_bytes([*h.get(2)?, *h.get(3)?]);
             if sport == 53 || dport == 53 {
                 let msg = dns::parse(h.get(8..)?)?;
-                Some(Pkt::Dns { src, sport, msg })
+                Some(Pkt::Dns { src, sport, dport, msg })
             } else {
-                Some(Pkt::Udp { dst, sport, dport, len: total.saturating_sub(l4) as u32 })
+                Some(Pkt::Udp { src, dst, sport, dport, len: total.saturating_sub(l4) as u32, inbound: false })
             }
         }
         1 | 58 => Some(Pkt::Icmp { dst, len: total.saturating_sub(l4 + 8) as u32 }),
@@ -238,11 +248,161 @@ fn parse(b: &[u8]) -> Option<Pkt> {
 
 #[cfg(test)]
 mod tests {
+    use super::dns::fuzz::{mutate, Rng};
+    use super::*;
+    use std::time::Instant;
+
     #[test]
     fn filter_assembles_and_ends_with_returns() {
         let f = super::filter();
         assert!(f.len() < 64);
         assert_eq!(f.last().unwrap().code, super::RET);
         assert_eq!(f.last().unwrap().k, 0);
+    }
+
+    fn dns_query() -> Vec<u8> {
+        let mut q = vec![0x12, 0x34, 0x01, 0x00, 0, 1, 0, 0, 0, 0, 0, 0];
+        q.extend_from_slice(&[1, b'a', 2, b'b', b'c', 3, b'c', b'o', b'm', 0, 0, 1, 0, 1]);
+        q
+    }
+
+    fn dns_answer() -> Vec<u8> {
+        let mut r = dns_query();
+        r[2] = 0x81;
+        r[3] = 0x80;
+        r[7] = 1;
+        r.extend_from_slice(&[0xC0, 12, 0, 1, 0, 1, 0, 0, 0, 60, 0, 4, 93, 184, 216, 34]);
+        r
+    }
+
+    fn v4(proto: u8, l4: &[u8], opts: usize) -> Vec<u8> {
+        let ihl = 20 + opts;
+        let mut p = vec![0x40 | (ihl / 4) as u8, 0];
+        p.extend_from_slice(&((ihl + l4.len()) as u16).to_be_bytes());
+        p.extend_from_slice(&[0, 0, 0x40, 0, 64, proto, 0, 0, 10, 0, 0, 2, 1, 1, 1, 1]);
+        p.extend(std::iter::repeat(1).take(opts)); // NOP options
+        p.extend_from_slice(l4);
+        p
+    }
+
+    fn v6(proto: u8, l4: &[u8]) -> Vec<u8> {
+        let mut p = vec![0x60, 0, 0, 0];
+        p.extend_from_slice(&(l4.len() as u16).to_be_bytes());
+        p.extend_from_slice(&[proto, 64]);
+        p.extend_from_slice(&[0xfd, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 2]);
+        p.extend_from_slice(&[0x20, 0x01, 0x0d, 0xb8, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1]);
+        p.extend_from_slice(l4);
+        p
+    }
+
+    fn udp(sport: u16, dport: u16, payload: &[u8]) -> Vec<u8> {
+        let mut u = sport.to_be_bytes().to_vec();
+        u.extend_from_slice(&dport.to_be_bytes());
+        u.extend_from_slice(&((8 + payload.len()) as u16).to_be_bytes());
+        u.extend_from_slice(&[0, 0]);
+        u.extend_from_slice(payload);
+        u
+    }
+
+    fn seeds() -> Vec<Vec<u8>> {
+        let syn = [0xd4, 0x31, 0x01, 0xbb, 0, 0, 0, 1, 0, 0, 0, 0, 0x50, 0x02, 0xff, 0xff, 0, 0, 0, 0];
+        let icmp = [8, 0, 0, 0, 0, 1, 0, 1, 1, 2, 3, 4];
+        let icmp6 = [128, 0, 0, 0, 0, 1, 0, 1];
+        vec![
+            v4(6, &syn, 0),
+            v4(6, &syn, 12),
+            v4(17, &udp(40000, 53, &dns_query()), 0),
+            v4(17, &udp(53, 40000, &dns_answer()), 4),
+            v4(17, &udp(40000, 443, &[0xc3; 40]), 0),
+            v4(1, &icmp, 0),
+            v6(6, &syn),
+            v6(17, &udp(53, 40000, &dns_answer())),
+            v6(17, &udp(40000, 443, &[0x40; 24])),
+            v6(58, &icmp6),
+        ]
+    }
+
+    /// Header-aware mutations: version / IHL nibble, total & payload length,
+    /// protocol, ports (towards and away from 53).
+    fn ip_specific(r: &mut Rng, p: &mut Vec<u8>) {
+        if p.is_empty() {
+            return;
+        }
+        match r.below(5) {
+            0 => p[0] = ([0x40, 0x60, 0x00, 0xF0][r.below(4)] & 0xF0) | (r.next() as u8 & 0x0F),
+            1 if p.len() >= 6 => {
+                let at = if p[0] >> 4 == 6 { 4 } else { 2 };
+                let v = r.interesting(p.len()) as u16;
+                p[at..at + 2].copy_from_slice(&v.to_be_bytes());
+            }
+            2 if p.len() >= 10 => {
+                let at = if p[0] >> 4 == 6 { 6 } else { 9 };
+                p[at] = [1, 6, 17, 58, 0, 255][r.below(6)];
+            }
+            3 if p.len() >= 4 => {
+                let l4 = if p[0] >> 4 == 6 { 40 } else { (p[0] & 0xF) as usize * 4 };
+                if p.len() >= l4 + 4 {
+                    let at = l4 + 2 * r.below(2);
+                    let v: u16 = if r.chance(2) { 53 } else { r.next() as u16 };
+                    p[at..at + 2].copy_from_slice(&v.to_be_bytes());
+                }
+            }
+            _ => p.truncate(r.below(p.len() + 1)),
+        }
+    }
+
+    fn check(b: &[u8], p: &Pkt) {
+        if b[0] >> 4 == 4 {
+            assert!((b[0] & 0xF) >= 5, "IPv4 with IHL < 5 accepted");
+        }
+        match p {
+            Pkt::Dns { msg, .. } => {
+                assert!(msg.name.len() <= 300);
+                assert!(msg.answers.len() <= 32);
+            }
+            Pkt::Udp { len, .. } | Pkt::Icmp { len, .. } => assert!(*len <= 65535 + 40),
+            Pkt::Syn { .. } => {}
+        }
+    }
+
+    #[test]
+    fn fuzz_capture_parse() {
+        let t = Instant::now();
+        let mut r = Rng(0x0123_4567_89AB_CDEF);
+        let seeds = seeds();
+        for s in &seeds {
+            check(s, &parse(s).expect("seed parses"));
+        }
+        let (mut ok, mut iters) = (0u64, 0u64);
+        // fully random buffers, most with a v4 or v6 version nibble
+        for _ in 0..500_000 {
+            let mut b = r.bytes(200);
+            if !b.is_empty() && !r.chance(4) {
+                b[0] = if r.chance(2) { 0x40 } else { 0x60 } | (b[0] & 0x0F);
+            }
+            if let Some(p) = parse(&b) {
+                check(&b, &p);
+                ok += 1;
+            }
+            iters += 1;
+        }
+        // stacked mutations of valid packets
+        for _ in 0..300_000 {
+            let mut b = seeds[r.below(seeds.len())].clone();
+            for _ in 0..1 + r.below(4) {
+                if r.chance(2) {
+                    mutate(&mut r, &mut b, true);
+                } else {
+                    ip_specific(&mut r, &mut b);
+                }
+                if let Some(p) = parse(&b) {
+                    check(&b, &p);
+                    ok += 1;
+                }
+                iters += 1;
+            }
+        }
+        eprintln!("fuzz_capture_parse: {iters} iterations, {ok} parsed, {:?}", t.elapsed());
+        assert!(ok > 10_000);
     }
 }

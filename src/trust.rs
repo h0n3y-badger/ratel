@@ -129,7 +129,7 @@ pub fn default_allowlists() -> Vec<String> {
 fn parse_allowlist(s: &str, out: &mut HashSet<[u8; 32]>) {
     for line in s.lines() {
         let tok = line.split_whitespace().next().unwrap_or("");
-        if tok.starts_with('#') || tok.len() != 64 {
+        if tok.starts_with('#') || tok.len() != 64 || !tok.is_ascii() {
             continue;
         }
         let mut h = [0u8; 32];

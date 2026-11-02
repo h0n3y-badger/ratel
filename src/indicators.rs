@@ -346,6 +346,11 @@ pub const ROLES: &[RoleDef] = &[
         ],
     },
     RoleDef {
+        // Guest-side GPU drivers (Mesa's svga/virgl): they talk to the hypervisor by design.
+        name: "vm-guest-driver", feature: "", excuses: &["anti_vm"], min: 3,
+        pats: &["vmwgfx", "SVGA3D", "vmw_ioctl", "virgl", "virtio_gpu", "drm_vmw", "SVGA_3D_CMD"],
+    },
+    RoleDef {
         name: "wine", feature: "role_wine", excuses: &["anti_vm", "anti_debug"], min: 2,
         pats: &[
             "Wine builtin DLL", "Wine placeholder DLL", "wine_server_call", "__wine_", "WINEPREFIX", "WINEDEBUG",

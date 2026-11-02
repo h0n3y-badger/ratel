@@ -1,11 +1,11 @@
 {
  "trained": "2026-11-01",
  "params": {
-  "n_estimators": 90,
+  "n_estimators": 200,
   "max_depth": 3,
   "learning_rate": 0.12,
   "subsample": 0.8,
-  "min_samples_leaf": 12,
+  "min_samples_leaf": 6,
   "random_state": 0
  },
  "target_fpr": 0.005,
@@ -36,94 +36,95 @@
  },
  "caps": {
   "anti_debug": {
-   "threshold": 0.821901150445088,
-   "heldout_family_recall": 0.4332765474162408,
-   "heldout_family_auc": 0.7708144352210274,
+   "threshold": 0.9064621868184461,
+   "val_f1": 0.7026578073089701,
+   "heldout_family_recall": 0.4565587734241908,
+   "heldout_family_auc": 0.7579015064224711,
    "synthetic_neg_fpr": 0.014432538814782419,
-   "real_holdout_fpr": 0.0,
+   "real_holdout_fpr": 0.0003812428516965307,
    "real_holdout_weak_recall": null,
    "n_train": 13781,
    "n_pos": 824,
    "n_test_pos": 1761,
-   "system_recall": 0.6115843270868825,
-   "system_synth_fpr": 0.02164880822217363,
-   "system_real_holdout_fpr": 0.0,
-   "system_real_holdout_flag_rate": 0.0060629026146267525,
-   "games_flagged": 2,
+   "system_recall": 0.6394094264622374,
+   "system_synth_fpr": 0.022304832713754646,
+   "system_real_holdout_fpr": 0.0003812428516965307,
+   "system_real_holdout_flag_rate": 0.006441834028040924,
+   "games_flagged": 0,
    "games_top": [
     [
-     0.871,
-     "/home/h0n3y-badger/.var/app/com.valvesoftware.Steam/.local/share/Steam/steamapps/common/Blade & Sorcery/BladeAndSorcery_Data/Plugins/x86_64/libpxrplatformloader.dll"
-    ],
-    [
-     0.832,
-     "/home/h0n3y-badger/.var/app/com.valvesoftware.Steam/.local/share/Steam/steamapps/common/Cyberpunk 2077/bin/x64/D3D12/d3d12SDKLayers.dll"
-    ],
-    [
-     0.754,
+     0.866,
      "/home/h0n3y-badger/.var/app/com.valvesoftware.Steam/.local/share/Steam/steamapps/common/Tactical Assault VR/Tactical Assault VR_Data/Plugins/x86_64/OVRLipSync.dll"
     ],
     [
-     0.732,
+     0.846,
      "/home/h0n3y-badger/.var/app/com.valvesoftware.Steam/.local/share/Steam/steamapps/common/EscapeTheBackrooms/EscapeTheBackrooms/Binaries/Win64/OpenImageDenoise.dll"
     ],
     [
-     0.599,
-     "/home/h0n3y-badger/.var/app/com.valvesoftware.Steam/.local/share/Steam/steamapps/common/Cyberpunk 2077/bin/x64/libeay32.dll"
+     0.552,
+     "/home/h0n3y-badger/.var/app/com.valvesoftware.Steam/.local/share/Steam/steamapps/common/Cyberpunk 2077/bin/x64/D3D12/d3d12SDKLayers.dll"
     ],
     [
-     0.566,
-     "/home/h0n3y-badger/.var/app/com.valvesoftware.Steam/.local/share/Steam/steamapps/common/The Outlast Trials/Engine/Binaries/ThirdParty/NVIDIA/NVaftermath/Win64/GFSDK_Aftermath_Lib.x64.dll"
+     0.307,
+     "/home/h0n3y-badger/.var/app/com.valvesoftware.Steam/.local/share/Steam/steamapps/common/Tactical Assault VR/Tactical Assault VR_Data/Plugins/x86_64/libonigwrap.dll"
     ],
     [
-     0.562,
-     "/home/h0n3y-badger/.var/app/com.valvesoftware.Steam/.local/share/Steam/steamapps/common/Cyberpunk 2077/bin/x64/plugins/cyber_engine_tweaks.asi"
+     0.258,
+     "/home/h0n3y-badger/.var/app/com.valvesoftware.Steam/.local/share/Steam/steamapps/common/The Outlast Trials/Engine/Binaries/ThirdParty/PhysX3/Win64/VS2022/PhysX3_x64.dll"
     ],
     [
-     0.556,
+     0.258,
+     "/home/h0n3y-badger/.var/app/com.valvesoftware.Steam/.local/share/Steam/steamapps/common/EscapeTheBackrooms/Engine/Binaries/ThirdParty/PhysX3/Win64/VS2015/PhysX3_x64.dll"
+    ],
+    [
+     0.251,
      "/home/h0n3y-badger/.var/app/com.valvesoftware.Steam/.local/share/Steam/steamapps/common/Blade & Sorcery/BladeAndSorcery.exe"
+    ],
+    [
+     0.165,
+     "/home/h0n3y-badger/.var/app/com.valvesoftware.Steam/.local/share/Steam/steamapps/common/EscapeTheBackrooms/EscapeTheBackrooms/Binaries/Win64/tbb12.dll"
     ]
    ],
    "top_features": [
     [
      "tls_callbacks",
-     0.2143
+     0.2057
     ],
     [
      "raw_syscalls",
-     0.1092
-    ],
-    [
-     "str_dbg_checks",
-     0.068
-    ],
-    [
-     "api_antidbg",
-     0.0666
+     0.1142
     ],
     [
      "rdtsc",
-     0.0664
+     0.0686
+    ],
+    [
+     "str_dbg_checks",
+     0.0658
+    ],
+    [
+     "api_antidbg",
+     0.0644
     ],
     [
      "stripped",
-     0.0647
+     0.0638
     ],
     [
      "is_static",
-     0.0631
+     0.0587
     ],
     [
      "peb_access",
-     0.0395
+     0.0385
     ],
     [
      "cmp_int3",
-     0.0391
+     0.0375
     ],
     [
-     "str_dbg_tools",
-     0.0371
+     "api_timing",
+     0.0336
     ]
    ],
    "legit_eval": {
@@ -139,7 +140,7 @@
     },
     "hypervisor": {
      "n": 66,
-     "model_flag": 0.0152,
+     "model_flag": 0.0,
      "system_flag": 0.0455
     },
     "sysinfo": {
@@ -154,97 +155,98 @@
     }
    },
    "system_alpine_holdout_flag_rate": 0.017543859649122806,
-   "threshold_final": 0.821901150445088
+   "threshold_final": 0.9064621868184461
   },
   "anti_vm": {
-   "threshold": 0.6540082178458125,
-   "heldout_family_recall": 0.3751219512195122,
-   "heldout_family_auc": 0.7972411810252557,
+   "threshold": 0.35999999999999993,
+   "val_f1": 0.7432286023835319,
+   "heldout_family_recall": 0.38439024390243903,
+   "heldout_family_auc": 0.8266746942679511,
    "synthetic_neg_fpr": 0.0,
-   "real_holdout_fpr": 0.0013328255902513328,
+   "real_holdout_fpr": 0.0028560548362528563,
    "real_holdout_weak_recall": null,
    "n_train": 13884,
    "n_pos": 569,
    "n_test_pos": 2050,
-   "system_recall": 0.45902439024390246,
+   "system_recall": 0.46682926829268295,
    "system_synth_fpr": 0.0,
-   "system_real_holdout_fpr": 0.0013328255902513328,
-   "system_real_holdout_flag_rate": 0.006252368321333838,
-   "games_flagged": 3,
+   "system_real_holdout_fpr": 0.0028560548362528563,
+   "system_real_holdout_flag_rate": 0.007768093974990527,
+   "games_flagged": 6,
    "games_top": [
     [
-     0.994,
-     "/home/h0n3y-badger/.var/app/com.valvesoftware.Steam/.local/share/Steam/steamapps/common/The Outlast Trials/Engine/Binaries/ThirdParty/CEF3/Win64/libcef.dll"
-    ],
-    [
-     0.98,
+     0.993,
      "/home/h0n3y-badger/.var/app/com.valvesoftware.Steam/.local/share/Steam/steamapps/common/The Outlast Trials/Engine/Binaries/ThirdParty/CEF3/Win64/d3dcompiler_43.dll"
     ],
     [
-     0.908,
+     0.965,
+     "/home/h0n3y-badger/.var/app/com.valvesoftware.Steam/.local/share/Steam/steamapps/common/The Outlast Trials/Engine/Binaries/ThirdParty/CEF3/Win64/libcef.dll"
+    ],
+    [
+     0.931,
      "/home/h0n3y-badger/.var/app/com.valvesoftware.Steam/.local/share/Steam/steamapps/common/The Outlast Trials/Engine/Binaries/ThirdParty/NVIDIA/NVaftermath/Win64/GFSDK_Aftermath_Lib.x64.dll"
     ],
     [
-     0.391,
-     "/home/h0n3y-badger/.var/app/com.valvesoftware.Steam/.local/share/Steam/steamapps/common/Tactical Assault VR/Tactical Assault VR_Data/Plugins/x86_64/lib_burst_generated.dll"
-    ],
-    [
-     0.391,
-     "/home/h0n3y-badger/.var/app/com.valvesoftware.Steam/.local/share/Steam/steamapps/common/Blade & Sorcery/BladeAndSorcery_Data/Plugins/x86_64/lib_burst_generated.dll"
-    ],
-    [
-     0.317,
+     0.479,
      "/home/h0n3y-badger/.var/app/com.valvesoftware.Steam/.local/share/Steam/steamapps/common/The Outlast Trials/Engine/Plugins/Runtime/Nvidia/DLSS/Binaries/ThirdParty/Win64/nvngx_dlss.dll"
     ],
     [
-     0.317,
+     0.479,
      "/home/h0n3y-badger/.var/app/com.valvesoftware.Steam/.local/share/Steam/steamapps/common/Cyberpunk 2077/bin/x64/nvngx_dlssd.dll"
     ],
     [
-     0.317,
+     0.479,
      "/home/h0n3y-badger/.var/app/com.valvesoftware.Steam/.local/share/Steam/steamapps/common/Cyberpunk 2077/bin/x64/nvngx_dlss.dll"
+    ],
+    [
+     0.114,
+     "/home/h0n3y-badger/.var/app/com.valvesoftware.Steam/.local/share/Steam/steamapps/common/Blade & Sorcery/BladeAndSorcery_Data/Plugins/x86_64/RTCFFmpeg.dll"
+    ],
+    [
+     0.096,
+     "/home/h0n3y-badger/.var/app/com.valvesoftware.Steam/.local/share/Steam/steamapps/common/EscapeTheBackrooms/EscapeTheBackrooms/Binaries/Win64/tbb12.dll"
     ]
    ],
    "top_features": [
     [
      "cpuid",
-     0.2788
+     0.2797
     ],
     [
      "redpill",
-     0.2605
+     0.2577
     ],
     [
      "str_vm_artifact",
-     0.1499
+     0.149
     ],
     [
      "imm_vm",
-     0.0823
+     0.0839
     ],
     [
      "str_sandbox",
-     0.05
+     0.0496
     ],
     [
      "vmcall",
-     0.0466
+     0.0462
     ],
     [
      "api_timing",
-     0.0239
+     0.0215
     ],
     [
      "vmware_backdoor",
-     0.0235
+     0.0209
     ],
     [
      "api_getprocaddress",
-     0.0142
+     0.0144
     ],
     [
      "cpuid_hv_leaf",
-     0.0135
+     0.0119
     ]
    ],
    "legit_eval": {
@@ -270,102 +272,103 @@
     },
     "vm_guest": {
      "n": 80,
-     "model_flag": 0.2,
+     "model_flag": 0.225,
      "system_flag": 0.3
     }
    },
-   "system_alpine_holdout_flag_rate": 0.01364522417153996,
-   "threshold_final": 0.7804306976066371
+   "system_alpine_holdout_flag_rate": 0.011695906432748537,
+   "threshold_final": 0.8227255935615913
   },
   "obfuscation": {
-   "threshold": 0.8226517902073041,
-   "heldout_family_recall": 0.19587053571428573,
-   "heldout_family_auc": 0.7386830230997457,
-   "synthetic_neg_fpr": 0.020344730149759818,
-   "real_holdout_fpr": 0.0015340364333652923,
+   "threshold": 0.7994640668627504,
+   "val_f1": 0.4983164983164983,
+   "heldout_family_recall": 0.23828125,
+   "heldout_family_auc": 0.7467221117749163,
+   "synthetic_neg_fpr": 0.018084204577564284,
+   "real_holdout_fpr": 0.0019175455417066154,
    "real_holdout_weak_recall": null,
    "n_train": 12843,
    "n_pos": 417,
    "n_test_pos": 1792,
-   "system_recall": 0.22265625,
-   "system_synth_fpr": 0.020344730149759818,
-   "system_real_holdout_fpr": 0.0015340364333652923,
-   "system_real_holdout_flag_rate": 0.013452065176203107,
+   "system_recall": 0.2661830357142857,
+   "system_synth_fpr": 0.018084204577564284,
+   "system_real_holdout_fpr": 0.0019175455417066154,
+   "system_real_holdout_flag_rate": 0.013830996589617279,
    "games_flagged": 2,
    "games_top": [
     [
-     0.946,
+     0.896,
      "/home/h0n3y-badger/.var/app/com.valvesoftware.Steam/.local/share/Steam/steamapps/common/Blade & Sorcery/BladeAndSorcery.exe"
     ],
     [
-     0.923,
+     0.864,
      "/home/h0n3y-badger/.var/app/com.valvesoftware.Steam/.local/share/Steam/steamapps/common/Tactical Assault VR/Tactical Assault VR.exe"
     ],
     [
-     0.767,
-     "/home/h0n3y-badger/.var/app/com.valvesoftware.Steam/.local/share/Steam/steamapps/common/Cyberpunk 2077/bin/x64/libxess_fg.dll"
-    ],
-    [
-     0.328,
+     0.438,
      "/home/h0n3y-badger/.var/app/com.valvesoftware.Steam/.local/share/Steam/steamapps/common/Cyberpunk 2077/bin/x64/amd_fidelityfx_loader_dx12.dll"
     ],
     [
-     0.261,
+     0.401,
+     "/home/h0n3y-badger/.var/app/com.valvesoftware.Steam/.local/share/Steam/steamapps/common/Cyberpunk 2077/bin/x64/libxess_fg.dll"
+    ],
+    [
+     0.228,
      "/home/h0n3y-badger/.var/app/com.valvesoftware.Steam/.local/share/Steam/steamapps/common/Tactical Assault VR/Tactical Assault VR_Data/Plugins/x86_64/native_microphone.dll"
     ],
     [
-     0.186,
+     0.204,
      "/home/h0n3y-badger/.var/app/com.valvesoftware.Steam/.local/share/Steam/steamapps/common/Blade & Sorcery/BladeAndSorcery_Data/Plugins/x86_64/libEGL.dll"
     ],
     [
-     0.134,
+     0.175,
      "/home/h0n3y-badger/.var/app/com.valvesoftware.Steam/.local/share/Steam/steamapps/common/Blade & Sorcery/BladeAndSorcery_Data/Plugins/x86_64/H264Encoder.dll"
     ],
     [
-     0.072,
-     "/home/h0n3y-badger/.var/app/com.valvesoftware.Steam/.local/share/Steam/steamapps/common/The Outlast Trials/Engine/Binaries/ThirdParty/Vorbis/Win64/VS2015/libvorbisfile_64.dll"
+     0.067,
+     "/home/h0n3y-badger/.var/app/com.valvesoftware.Steam/.local/share/Steam/steamapps/common/Tactical Assault VR/UnityCrashHandler64.exe"
     ]
    ],
    "top_features": [
     [
      "xor_imm_rate",
-     0.4642
+     0.4316
     ],
     [
      "rot_rate",
-     0.1796
+     0.1764
     ],
     [
      "xor_rate",
-     0.0984
+     0.1089
     ],
     [
      "rand_cmp_rate",
-     0.064
+     0.0677
     ],
     [
      "printable_ratio",
-     0.0485
+     0.0465
     ],
     [
      "stackstr_runs",
-     0.0397
-    ],
-    [
-     "jmp_reg_rate",
-     0.0267
+     0.0461
     ],
     [
      "str_mean_len",
-     0.024
+     0.0307
+    ],
+    [
+     "jmp_reg_rate",
+     0.0261
     ],
     [
      "rand_cmp",
-     0.0141
+     0.0168
     ],
     [
      "arith_mem8_rate",
-     0.0115
+     0.0145
     ]
    ],
    "legit_eval": {
@@ -396,97 +399,98 @@
     }
    },
    "system_alpine_holdout_flag_rate": 0.005847953216374269,
-   "threshold_final": 0.8226517902073041
+   "threshold_final": 0.7994640668627504
   },
   "packed": {
    "threshold": 0.5,
-   "heldout_family_recall": 0.5104685942173479,
-   "heldout_family_auc": 0.9934071355619879,
-   "synthetic_neg_fpr": 0.004877133746013881,
-   "real_holdout_fpr": 0.0005691519635742744,
+   "val_f1": 0.0,
+   "heldout_family_recall": 0.5094715852442672,
+   "heldout_family_auc": 0.9940794760718781,
+   "synthetic_neg_fpr": 0.004126805477396361,
+   "real_holdout_fpr": 0.0005687203791469195,
    "real_holdout_weak_recall": null,
    "n_train": 13837,
    "n_pos": 1033,
    "n_test_pos": 1003,
    "system_recall": 0.5483549351944168,
-   "system_synth_fpr": 0.004877133746013881,
-   "system_real_holdout_fpr": 0.0005691519635742744,
-   "system_real_holdout_flag_rate": 0.0018946570670708603,
-   "games_flagged": 4,
+   "system_synth_fpr": 0.004126805477396361,
+   "system_real_holdout_fpr": 0.0005687203791469195,
+   "system_real_holdout_flag_rate": 0.0011367942402425162,
+   "games_flagged": 3,
    "games_top": [
+    [
+     0.994,
+     "/home/h0n3y-badger/.var/app/com.valvesoftware.Steam/.local/share/Steam/steamapps/common/Cyberpunk 2077/bin/x64/amd_fidelityfx_framegeneration_dx12.dll"
+    ],
     [
      0.993,
      "/home/h0n3y-badger/.var/app/com.valvesoftware.Steam/.local/share/Steam/steamapps/common/The Outlast Trials/Engine/Plugins/Runtime/AMD/FSR/Source/fidelityfx-sdk/Kits/FidelityFX/signedbin/amd_fidelityfx_framegeneration_dx12.dll"
     ],
     [
-     0.993,
-     "/home/h0n3y-badger/.var/app/com.valvesoftware.Steam/.local/share/Steam/steamapps/common/Cyberpunk 2077/bin/x64/amd_fidelityfx_framegeneration_dx12.dll"
-    ],
-    [
-     0.987,
+     0.992,
      "/home/h0n3y-badger/.var/app/com.valvesoftware.Steam/.local/share/Steam/steamapps/common/Tactical Assault VR/Tactical Assault VR_Data/Plugins/x86_64/AudioPluginOculusSpatializer.dll"
     ],
     [
-     0.566,
+     0.093,
      "/home/h0n3y-badger/.var/app/com.valvesoftware.Steam/.local/share/Steam/steamapps/common/Cyberpunk 2077/bin/x64/amd_fidelityfx_upscaler_dx12.dll"
     ],
     [
-     0.091,
-     "/home/h0n3y-badger/.var/app/com.valvesoftware.Steam/.local/share/Steam/steamapps/common/Cyberpunk 2077/bin/x64/nvngx_dlssg.dll"
-    ],
-    [
-     0.049,
+     0.027,
      "/home/h0n3y-badger/.var/app/com.valvesoftware.Steam/.local/share/Steam/steamapps/common/The Outlast Trials/Engine/Binaries/ThirdParty/CEF3/Win64/libcef.dll"
     ],
     [
-     0.036,
-     "/home/h0n3y-badger/.var/app/com.valvesoftware.Steam/.local/share/Steam/steamapps/common/Cyberpunk 2077/bin/x64/libxess.dll"
+     0.026,
+     "/home/h0n3y-badger/.var/app/com.valvesoftware.Steam/.local/share/Steam/steamapps/common/Cyberpunk 2077/bin/x64/nvngx_dlssd.dll"
     ],
     [
-     0.025,
-     "/home/h0n3y-badger/.var/app/com.valvesoftware.Steam/.local/share/Steam/steamapps/common/Cyberpunk 2077/bin/x64/nvngx_dlssd.dll"
+     0.009,
+     "/home/h0n3y-badger/.var/app/com.valvesoftware.Steam/.local/share/Steam/steamapps/common/Cyberpunk 2077/bin/x64/nvngx_dlssg.dll"
+    ],
+    [
+     0.008,
+     "/home/h0n3y-badger/.var/app/com.valvesoftware.Steam/.local/share/Steam/steamapps/common/The Outlast Trials/Engine/Plugins/Runtime/AMD/FSR/Source/fidelityfx-sdk/Kits/FidelityFX/signedbin/amd_fidelityfx_upscaler_dx12.dll"
     ]
    ],
    "top_features": [
     [
      "frac_high_win",
-     0.9527
+     0.9509
     ],
     [
      "arith_mem8_rate",
-     0.0185
+     0.0163
     ],
     [
      "data_entropy_max",
-     0.0104
+     0.0107
     ],
     [
      "entropy_max_win",
-     0.0045
+     0.0051
     ],
     [
      "xor_mem8",
-     0.003
+     0.0049
     ],
     [
-     "overlay_entropy",
-     0.0024
+     "nonstd_sections",
+     0.0041
     ],
     [
-     "exec_entropy_max",
-     0.0023
+     "exec_entropy_mean",
+     0.0029
     ],
     [
-     "decode_loops",
-     0.0016
-    ],
-    [
-     "overlay_ratio",
+     "entropy",
      0.0015
     ],
     [
+     "printable_ratio",
+     0.0009
+    ],
+    [
      "rsrc_ratio",
-     0.0014
+     0.0009
     ]
    ],
    "legit_eval": {
@@ -520,28 +524,25 @@
    "threshold_final": 0.5
   },
   "crypto": {
-   "threshold": 0.6267005198316334,
-   "heldout_family_recall": 0.6169289202387411,
-   "heldout_family_auc": 0.8872637343173386,
-   "synthetic_neg_fpr": 0.012523822488429077,
-   "real_holdout_fpr": 0.004435483870967742,
-   "real_holdout_weak_recall": 0.9854545454545455,
+   "threshold": 0.6383485342641535,
+   "val_f1": 0.7763074984247007,
+   "heldout_family_recall": 0.6614215952251763,
+   "heldout_family_auc": 0.8985903941285848,
+   "synthetic_neg_fpr": 0.013885107541519195,
+   "real_holdout_fpr": 0.0024193548387096775,
+   "real_holdout_weak_recall": 0.9781818181818182,
    "n_train": 12938,
    "n_pos": 1511,
    "n_test_pos": 1843,
-   "system_recall": 0.6619641888225719,
-   "system_synth_fpr": 0.012523822488429077,
-   "system_real_holdout_fpr": 0.004435483870967742,
-   "system_real_holdout_flag_rate": 0.06119742326638879,
-   "games_flagged": 216,
+   "system_recall": 0.6928920238741183,
+   "system_synth_fpr": 0.013885107541519195,
+   "system_real_holdout_fpr": 0.0024193548387096775,
+   "system_real_holdout_flag_rate": 0.058734369079196665,
+   "games_flagged": 217,
    "games_top": [
     [
      1.0,
-     "/home/h0n3y-badger/.var/app/com.valvesoftware.Steam/.local/share/Steam/steamapps/common/Cyberpunk 2077/bin/x64/REDGalaxy64.dll"
-    ],
-    [
-     1.0,
-     "/home/h0n3y-badger/.var/app/com.valvesoftware.Steam/.local/share/Steam/steamapps/common/Blade & Sorcery/BladeAndSorcery_Data/Plugins/x86_64/OVRPlugin.dll"
+     "/home/h0n3y-badger/.var/app/com.valvesoftware.Steam/.local/share/Steam/steamapps/common/Cyberpunk 2077/libcrypto-1_1-x64.dll"
     ],
     [
      1.0,
@@ -549,15 +550,7 @@
     ],
     [
      1.0,
-     "/home/h0n3y-badger/.var/app/com.valvesoftware.Steam/.local/share/Steam/steamapps/common/Blade & Sorcery/UnityPlayer.dll"
-    ],
-    [
-     1.0,
-     "/home/h0n3y-badger/.var/app/com.valvesoftware.Steam/.local/share/Steam/steamapps/common/Tactical Assault VR/UnityPlayer.dll"
-    ],
-    [
-     1.0,
-     "/home/h0n3y-badger/.var/app/com.valvesoftware.Steam/.local/share/Steam/steamapps/common/The Outlast Trials/Engine/Binaries/ThirdParty/CEF3/Win64/libcef.dll"
+     "/home/h0n3y-badger/.var/app/com.valvesoftware.Steam/.local/share/Steam/steamapps/common/Blade & Sorcery/BladeAndSorcery_Data/Plugins/x86_64/OVRPlugin.dll"
     ],
     [
      1.0,
@@ -565,49 +558,61 @@
     ],
     [
      1.0,
-     "/home/h0n3y-badger/.var/app/com.valvesoftware.Steam/.local/share/Steam/steamapps/common/Cyberpunk 2077/libcrypto-1_1-x64.dll"
+     "/home/h0n3y-badger/.var/app/com.valvesoftware.Steam/.local/share/Steam/steamapps/common/Cyberpunk 2077/bin/x64/REDGalaxy64.dll"
+    ],
+    [
+     1.0,
+     "/home/h0n3y-badger/.var/app/com.valvesoftware.Steam/.local/share/Steam/steamapps/common/Tactical Assault VR/UnityPlayer.dll"
+    ],
+    [
+     1.0,
+     "/home/h0n3y-badger/.var/app/com.valvesoftware.Steam/.local/share/Steam/steamapps/common/Blade & Sorcery/UnityPlayer.dll"
+    ],
+    [
+     1.0,
+     "/home/h0n3y-badger/.var/app/com.valvesoftware.Steam/.local/share/Steam/steamapps/common/The Outlast Trials/Engine/Binaries/ThirdParty/CEF3/Win64/libcef.dll"
     ]
    ],
    "top_features": [
     [
      "xor_rate",
-     0.4126
+     0.4144
     ],
     [
      "cc_rsa_oid",
-     0.2314
+     0.2172
     ],
     [
      "str_crypto",
-     0.0778
-    ],
-    [
-     "imm_tea",
-     0.052
+     0.0714
     ],
     [
      "rot_rate",
-     0.0519
+     0.0505
     ],
     [
-     "api_crypto",
-     0.0322
-    ],
-    [
-     "cc_sha512",
-     0.0215
+     "imm_tea",
+     0.0494
     ],
     [
      "xor_imm_rate",
-     0.0213
+     0.0365
+    ],
+    [
+     "api_crypto",
+     0.0315
     ],
     [
      "cc_md5",
-     0.02
+     0.0211
+    ],
+    [
+     "cc_sha512",
+     0.0201
     ],
     [
      "aesni",
-     0.0176
+     0.017
     ]
    ],
    "legit_eval": {
@@ -618,8 +623,8 @@
     },
     "debugger": {
      "n": 57,
-     "model_flag": 0.0702,
-     "system_flag": 0.0702
+     "model_flag": 0.0526,
+     "system_flag": 0.0526
     },
     "hypervisor": {
      "n": 66,
@@ -637,97 +642,98 @@
      "system_flag": 0.0
     }
    },
-   "system_alpine_holdout_flag_rate": 0.09551656920077972,
-   "threshold_final": 0.7690930722684215
+   "system_alpine_holdout_flag_rate": 0.08771929824561403,
+   "threshold_final": 0.6383485342641535
   },
   "network": {
-   "threshold": 0.4699999999999999,
+   "threshold": 0.35999999999999993,
+   "val_f1": 0.9669829222011386,
    "heldout_family_recall": 0.9584964761158966,
-   "heldout_family_auc": 0.982705845607529,
-   "synthetic_neg_fpr": 0.013842198932173226,
+   "heldout_family_auc": 0.985559376436734,
+   "synthetic_neg_fpr": 0.017203875815701007,
    "real_holdout_fpr": 0.0,
    "real_holdout_weak_recall": 1.0,
    "n_train": 8874,
    "n_pos": 787,
    "n_test_pos": 1277,
    "system_recall": 0.9584964761158966,
-   "system_synth_fpr": 0.013842198932173226,
+   "system_synth_fpr": 0.017203875815701007,
    "system_real_holdout_fpr": 0.0,
    "system_real_holdout_flag_rate": 0.07919666540356196,
-   "games_flagged": 34,
+   "games_flagged": 31,
    "games_top": [
     [
-     0.999,
-     "/home/h0n3y-badger/.var/app/com.valvesoftware.Steam/.local/share/Steam/steamapps/common/The Outlast Trials/Engine/Binaries/ThirdParty/CEF3/Win64/libcef.dll"
+     1.0,
+     "/home/h0n3y-badger/.var/app/com.valvesoftware.Steam/.local/share/Steam/steamapps/common/Cyberpunk 2077/Qt5Network.dll"
     ],
     [
-     0.999,
-     "/home/h0n3y-badger/.var/app/com.valvesoftware.Steam/.local/share/Steam/steamapps/common/Blade & Sorcery/UnityPlayer.dll"
-    ],
-    [
-     0.999,
+     1.0,
      "/home/h0n3y-badger/.var/app/com.valvesoftware.Steam/.local/share/Steam/steamapps/common/Blade & Sorcery/BladeAndSorcery_Data/Plugins/x86_64/VolcEngineRTC.dll"
     ],
     [
-     0.999,
-     "/home/h0n3y-badger/.var/app/com.valvesoftware.Steam/.local/share/Steam/steamapps/common/Tactical Assault VR/UnityPlayer.dll"
-    ],
-    [
-     0.999,
+     1.0,
      "/home/h0n3y-badger/.var/app/com.valvesoftware.Steam/.local/share/Steam/steamapps/common/Blade & Sorcery/MonoBleedingEdge/EmbedRuntime/mono-2.0-bdwgc.dll"
     ],
     [
-     0.999,
+     1.0,
      "/home/h0n3y-badger/.var/app/com.valvesoftware.Steam/.local/share/Steam/steamapps/common/The Outlast Trials/Engine/Plugins/VivoxCore/Source/ThirdParty/VivoxCoreLibrary/Windows/Release/x64/vivoxsdk.dll"
     ],
     [
-     0.999,
+     1.0,
+     "/home/h0n3y-badger/.var/app/com.valvesoftware.Steam/.local/share/Steam/steamapps/common/EscapeTheBackrooms/Engine/Extras/Redist/en-us/UE4PrereqSetup_x64.exe"
+    ],
+    [
+     1.0,
+     "/home/h0n3y-badger/.var/app/com.valvesoftware.Steam/.local/share/Steam/steamapps/common/Cyberpunk 2077/bin/x64/Cyberpunk2077.exe"
+    ],
+    [
+     1.0,
      "/home/h0n3y-badger/.var/app/com.valvesoftware.Steam/.local/share/Steam/steamapps/common/The Outlast Trials/Engine/Binaries/ThirdParty/NVIDIA/GeForceNOW/Win64/GfnRuntimeSdk.dll"
     ],
     [
-     0.999,
+     1.0,
      "/home/h0n3y-badger/.var/app/com.valvesoftware.Steam/.local/share/Steam/steamapps/common/The Outlast Trials/EasyAntiCheat/EasyAntiCheat_EOS_Setup.exe"
     ]
    ],
    "top_features": [
     [
      "api_net",
-     0.8827
+     0.8768
     ],
     [
      "sys_socket",
-     0.0862
+     0.0856
     ],
     [
      "raw_syscalls",
-     0.0291
+     0.0339
     ],
     [
      "stripped",
-     0.0013
+     0.0029
     ],
     [
      "dyn_api_strings",
-     0.0007
-    ],
-    [
-     "api_dns",
-     0.0
-    ],
-    [
-     "urls",
-     0.0
+     0.0004
     ],
     [
      "domains",
-     0.0
+     0.0001
+    ],
+    [
+     "urls",
+     0.0001
+    ],
+    [
+     "api_dynres",
+     0.0001
     ],
     [
      "is_static",
      0.0
     ],
     [
-     "str_net",
+     "api_dns",
      0.0
     ]
    ],
@@ -762,6 +768,6 @@
    "threshold_final": 0.5
   }
  },
- "model_bytes": 300292,
- "model_sha256": "2adfa8a20d3417422d0e1fa2feb94d6af33dfc03b8d09bbdf6517251a53adaca"
+ "model_bytes": 813556,
+ "model_sha256": "f1136427f0ab22fac4fad6a182bed66b986d09ded3564bcbd913ab2e73e53314"
 }

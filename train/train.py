@@ -128,7 +128,8 @@ def export_tree(t, lr):
     tr = t.tree_
     f = [int(v) if tr.children_left[i] != -1 else -1 for i, v in enumerate(tr.feature)]
     return {"f": f, "t": [float(v) for v in tr.threshold], "l": [max(int(v), 0) for v in tr.children_left],
-            "r": [max(int(v), 0) for v in tr.children_right], "v": [float(v) * lr for v in tr.value[:, 0, 0]]}
+            "r": [max(int(v), 0) for v in tr.children_right], "v": [float(v) * lr for v in tr.value[:, 0, 0]],
+            "n": [round(float(v), 3) for v in tr.weighted_n_node_samples]}
 
 
 def raw_predict(m_json, X):
@@ -193,7 +194,15 @@ def main():
     ap.add_argument("--holdout-frac", type=float, default=0.25)
     ap.add_argument("--random-split", action="store_true",
                     help="random (not family) split: measures recall on KNOWN techniques; writes no model")
+    ap.add_argument("--params", help="JSON overriding the GradientBoosting parameters (sweeps)")
+    ap.add_argument("--train-frac", type=float, default=1.0, help="use this fraction of the synthetic training samples")
+    ap.add_argument("--summary", help="write validation/test metrics here and don't write a model")
     a = ap.parse_args()
+    global GB
+    if a.params:
+        GB = dict(GB, **json.loads(a.params))
+    elif os.path.exists(os.path.join(ROOT, "models/static-params.json")) and not a.summary:
+        GB = dict(GB, **json.load(open(os.path.join(ROOT, "models/static-params.json"))))
     os.chdir(ROOT)
     names = feature_names()
     fi = {n: i for i, n in enumerate(names)}
@@ -268,6 +277,9 @@ def main():
         else:  # technique-free samples: random split
             u = rng.random()
             (s_test if u < a.holdout_frac else s_val if u < 2 * a.holdout_frac else s_train).append(s)
+    if a.train_frac < 1.0:
+        sub = random.Random(99)
+        s_train = [x for x in s_train if sub.random() < a.train_frac]
     r_idx = list(range(len(R)))
     rng.shuffle(r_idx)
     r_cal = set(r_idx[: len(R) // 5])
@@ -317,7 +329,10 @@ def main():
         Xc, yc, _ = mat(r_calib, cap, True)
         pc = raw_predict(mj, Xc)
         Xsv, ysv, _ = mat(s_val, cap, False)
-        thr = pick_threshold(pc[yc == 0], raw_predict(mj, Xsv), ysv)
+        psv = raw_predict(mj, Xsv)
+        thr = pick_threshold(pc[yc == 0], psv, ysv)
+        prv = psv >= thr
+        val_f1 = float(2 * (prv & (ysv == 1)).sum() / max(prv.sum() + (ysv == 1).sum(), 1))
         Xst, yst, _ = mat(s_test, cap, False)
         pst = raw_predict(mj, Xst)
         # parity check: exported trees == sklearn
@@ -354,7 +369,7 @@ def main():
         pah = raw_predict(mj, Xah) if len(Xah) else np.zeros(0)
         alp_flag = float(((pah >= thr) | (rah[:, ci] >= 2)).mean()) if len(Xah) else None
         entry = {
-            "threshold": thr, "heldout_family_recall": rec, "heldout_family_auc": auc, "synthetic_neg_fpr": sfpr,
+            "threshold": thr, "val_f1": val_f1, "heldout_family_recall": rec, "heldout_family_auc": auc, "synthetic_neg_fpr": sfpr,
             "real_holdout_fpr": ho_fpr, "real_holdout_weak_recall": ho_rec,
             "n_train": int(len(y)), "n_pos": int((y == 1).sum()), "n_test_pos": int((yst == 1).sum()),
             "system_recall": sys_rec, "system_synth_fpr": sys_sfpr, "system_real_holdout_fpr": sys_hofpr,
@@ -395,6 +410,12 @@ def main():
         model["caps"][cap] = fj
     report["counts"].update({"alpine_holdout": len(alp_ho), "legit_eval": len(L_eval), "legit_train": n_legit_train})
 
+    if a.summary:
+        with open(a.summary, "w") as fh:
+            json.dump({"params": GB, "train_frac": a.train_frac, "caps": {c: {k: v.get(k) for k in ("val_f1", "system_recall",
+                       "heldout_family_recall", "system_synth_fpr", "system_real_holdout_flag_rate", "heldout_family_auc")}
+                       for c, v in report["caps"].items()}}, fh)
+        return
     if a.random_split:
         print("random split: no model written")
         return

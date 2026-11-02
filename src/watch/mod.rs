@@ -7,6 +7,8 @@
 //! Replay: ratel watch --replay ev.jsonl [--emit rows.jsonl]
 
 pub mod capture;
+pub mod cli;
+pub mod incidents;
 pub mod diag;
 pub mod dns;
 pub mod engine;
@@ -40,6 +42,8 @@ usage: ratel watch [opts]
   --scan-path DIR      also scan DIR statically every --scan-every hours (repeatable);
                        alerts once per file version on `high` and on modified package files
   --scan-every H       hours between static scans (default 6)
+  --digest-hour H      send a daily XMPP digest at this local hour (default 9; off to disable)
+  --status FILE        health/status file (default /run/ratel/status.json; see `ratel status`)
   --duration SECS      stop after SECS (default: run forever)
   --json               print alerts as JSON lines
   --record FILE        also write every event (JSON lines)
@@ -73,10 +77,14 @@ struct WOpts {
     loopback: bool,
     scan_paths: Vec<String>,
     scan_every: f64,
+    digest_hour: i32,
+    status: Option<String>,
+    emit_thin: u64,
+    net_model: Option<String>,
 }
 
 fn parse(args: &[String]) -> Result<WOpts, String> {
-    let mut o = WOpts { interval: 2.0, learn_hours: 24.0, cooldown_h: 6.0, notify_min: "medium".into(), scan_every: 6.0, ..Default::default() };
+    let mut o = WOpts { interval: 2.0, learn_hours: 24.0, cooldown_h: 6.0, notify_min: "medium".into(), scan_every: 6.0, digest_hour: 9, ..Default::default() };
     // config file first, command line overrides
     let cfg_path = args.windows(2).find(|w| w[0] == "--config").map(|w| w[1].clone());
     let mut all: Vec<String> = vec![];
@@ -124,7 +132,14 @@ fn parse(args: &[String]) -> Result<WOpts, String> {
             "--replay" => o.replay = Some(val(&mut i)?),
             "--emit" => o.emit = Some(val(&mut i)?),
             "--emit-all" => o.emit_all = true,
+            "--net-model" => o.net_model = Some(val(&mut i)?),
+            "--emit-thin" => o.emit_thin = num(val(&mut i)?)?.max(1.0) as u64,
             "--loopback" => o.loopback = true,
+            "--digest-hour" => {
+                let v = val(&mut i)?;
+                o.digest_hour = if v == "off" { -1 } else { v.parse().map_err(|_| format!("bad --digest-hour {v}"))? };
+            }
+            "--status" => o.status = Some(val(&mut i)?),
             "--scan-path" => o.scan_paths.push(val(&mut i)?),
             "--scan-every" => o.scan_every = num(val(&mut i)?)?.max(0.05),
             "-h" | "--help" => return Err(String::new()),
@@ -135,7 +150,7 @@ fn parse(args: &[String]) -> Result<WOpts, String> {
     Ok(o)
 }
 
-fn now() -> f64 {
+pub fn now() -> f64 {
     SystemTime::now().duration_since(UNIX_EPOCH).map(|d| d.as_secs_f64()).unwrap_or(0.0)
 }
 
@@ -144,8 +159,9 @@ fn load_state(dir: &Option<String>) -> State {
         .and_then(|b| serde_json::from_slice(&b).ok()).unwrap_or_default()
 }
 
-fn save_state(dir: &Option<String>, st: &State) {
+fn save_state(dir: &Option<String>, st: &mut State) {
     let Some(d) = dir else { return };
+    st.saved_t = now();
     let _ = std::fs::create_dir_all(d);
     let tmp = format!("{d}/net-state.json.tmp");
     if let Ok(b) = serde_json::to_vec(st) {
@@ -184,6 +200,30 @@ fn fmt_t(t: f64) -> String {
     format!("{:02}:{:02}:{:02}Z", (s / 3600) % 24, (s / 60) % 60, s % 60)
 }
 
+struct Sink {
+    rec: Option<std::io::BufWriter<std::fs::File>>,
+    recorder: incidents::Recorder,
+    store: Option<incidents::Store>,
+    events: u64,
+}
+
+/// Medium+ alerts get context and an incident; everything is logged / notified.
+fn handle_alert(mut a: Alert, eng: &Engine, sink: &mut Sink, out: &mut Out, health: &mut incidents::Health) {
+    if notify::sev_rank(a.severity) >= 2 && a.kind != "health" {
+        a.context = incidents::alert_context(&a, eng);
+        if let Some(s) = sink.store.as_mut() {
+            a.incident = s.on_alert(&a, &sink.recorder).0;
+        }
+    }
+    health.note_alert(&a);
+    out.alert(&a);
+}
+
+fn health_alert(kind_note: &str, severity: &'static str, title: &str, evidence: Vec<String>) -> Alert {
+    Alert { t: now(), severity, kind: "health", entity: "ratel".into(), pid: std::process::id(), dest: kind_note.into(), score: 0.0,
+        title: title.into(), evidence, incident: String::new(), context: serde_json::Value::Null }
+}
+
 static STOP: AtomicBool = AtomicBool::new(false);
 extern "C" fn on_signal(_: libc::c_int) {
     STOP.store(true, Ordering::Relaxed);
@@ -200,12 +240,19 @@ pub fn run(args: &[String]) {
             std::process::exit(2);
         }
     };
-    let model = crate::model::NetModel::load(crate::model::EMBEDDED_NET,
+    let net_json = match &o.net_model {
+        Some(p) => std::fs::read_to_string(p).unwrap_or_else(|e| {
+            eprintln!("ratel: {p}: {e}");
+            std::process::exit(2)
+        }),
+        None => crate::model::EMBEDDED_NET.to_string(),
+    };
+    let model = crate::model::NetModel::load(&net_json,
         &[("flow", engine::FLOW_FEATURES), ("dns", engine::DNS_FEATURES)]).unwrap_or_else(|e| {
             eprintln!("ratel: {e}");
             std::process::exit(2)
         });
-    let cfg = Config { learn_hours: o.learn_hours, cooldown: o.cooldown_h * 3600.0, ignore: o.ignore.clone(), ignore_dest: o.ignore_dest.clone() };
+    let cfg = Config { suppress: Default::default(), learn_hours: o.learn_hours, cooldown: o.cooldown_h * 3600.0, ignore: o.ignore.clone(), ignore_dest: o.ignore_dest.clone() };
     if let Some(path) = &o.replay {
         replay(path, &o, cfg, model);
         return;
@@ -223,6 +270,9 @@ fn replay(path: &str, o: &WOpts, cfg: Config, model: crate::model::NetModel) {
         });
         eng.emit = Some(Box::new(std::io::BufWriter::new(f)));
         eng.emit_all = o.emit_all;
+        if o.emit_thin > 0 {
+            eng.emit_thin = o.emit_thin;
+        }
     }
     let mut out = Out { json: o.json, log: None, notifier: notify::Notifier::new(false, "high") };
     let rd: Box<dyn BufRead> = if path == "-" { Box::new(std::io::stdin().lock()) } else {
@@ -253,7 +303,7 @@ fn replay(path: &str, o: &WOpts, cfg: Config, model: crate::model::NetModel) {
     if let Some(mut w) = eng.emit.take() {
         let _ = w.flush();
     }
-    save_state(&o.state, &eng.st);
+    save_state(&o.state, &mut eng.st);
     eprintln!("ratel watch: replayed {n} events");
 }
 
@@ -401,7 +451,7 @@ fn live(o: &WOpts, cfg: Config, model: crate::model::NetModel) {
         std::fs::OpenOptions::new().create(true).append(true).open(p).ok()
     });
     let sock_ok = std::path::Path::new(&std::env::var("NOTIFY_SOCKET").unwrap_or_else(|_| "/run/prosody/notify.sock".into())).exists();
-    let mut out = Out { json: o.json, log, notifier: notify::Notifier::new(!o.no_notify && sock_ok, &o.notify_min) };
+    let mut out = Out { json: o.json, log, notifier: notify::Notifier::new(!o.no_notify && (root || sock_ok), &o.notify_min) };
     let mut eng = Engine::new(cfg, load_state(&state_dir), if model.units.is_empty() { None } else { Some(model) });
     let mut rec = o.record.as_ref().map(|p| std::io::BufWriter::new(std::fs::File::create(p).unwrap_or_else(|e| {
         eprintln!("ratel: {p}: {e}");
@@ -427,7 +477,10 @@ fn live(o: &WOpts, cfg: Config, model: crate::model::NetModel) {
     let mut procs = procs::Procs::default();
     let mut procs_at = Instant::now() - Duration::from_secs(3600);
     let mut cookie_ent: HashMap<u64, (String, u32)> = HashMap::new();
-    let mut last_counts: HashMap<u64, (u64, u64)> = HashMap::new();
+    // cookie -> (sent, recv, last emitted): unchanged connections are re-sent every 5 min
+    let mut last_counts: HashMap<u64, (u64, u64, Instant)> = HashMap::new();
+    // socket inodes no process holds (kernel-owned): don't rescan /proc for them every second
+    let mut unattributable: HashMap<u64, Instant> = HashMap::new();
     let mut udp_port: HashMap<u16, String> = HashMap::new();
     let mut listening: HashSet<(u64, u16)> = HashSet::new();
     let mut listen_ents: HashSet<String> = HashSet::new();
@@ -451,7 +504,7 @@ fn live(o: &WOpts, cfg: Config, model: crate::model::NetModel) {
             let kind = crate::trust::detect_pkg_kind();
             for (ent, pid) in scan_rx {
                 let p = format!("/proc/{pid}/exe");
-                let Some(d) = crate::read_candidate(std::path::Path::new(&p), 128 << 20) else { continue };
+                let Some(d) = crate::read_candidate_heap(std::path::Path::new(&p), 128 << 20) else { continue };
                 let Some(m) = m.as_ref() else { continue };
                 let mut r = crate::report::assess(&crate::features::analyze(&d), m);
                 if let Ok(exe) = std::fs::read_link(&p) {
@@ -477,7 +530,7 @@ fn live(o: &WOpts, cfg: Config, model: crate::model::NetModel) {
             // SAFETY: lowers the priority of this thread only (Linux: per-thread nice).
             unsafe { libc::setpriority(libc::PRIO_PROCESS, libc::gettid() as libc::id_t, 15) };
             let Ok(m) = crate::model::Model::load(crate::model::EMBEDDED) else { return };
-            let cfg = crate::ScanCfg { jobs: 1, max: 128 << 20, allow: vec![], integrity: true, pkg_trust: true };
+            let cfg = crate::ScanCfg { heap: true, jobs: 1, max: 64 << 20, allow: vec![], integrity: true, pkg_trust: true };
             loop {
                 let _ = crate::scan_files(&paths, &cfg, &m, |p, r, sha| {
                     let modified = matches!(r.origin, Some(crate::trust::Origin::Modified { .. }));
@@ -492,7 +545,7 @@ fn live(o: &WOpts, cfg: Config, model: crate::model::NetModel) {
                         entity: p.display().to_string(), pid: 0, dest: String::new(), score: r.risk,
                         title: if modified { format!("package file modified after install: {}", p.display()) }
                             else { format!("suspicious binary ({:.2}: {}): {}", r.risk, det.join(", "), p.display()) },
-                        evidence: ev,
+                        evidence: ev, incident: String::new(), context: serde_json::Value::Null,
                     });
                 });
                 std::thread::sleep(every);
@@ -500,14 +553,40 @@ fn live(o: &WOpts, cfg: Config, model: crate::model::NetModel) {
         });
     }
 
-    let emit = |eng: &mut Engine, ev: Event, rec: &mut Option<std::io::BufWriter<std::fs::File>>| {
-        if let Some(w) = rec.as_mut() {
+    // ---- after-detection machinery: incidents, flight recorder, health, feedback
+    let mut sink = Sink { rec: rec.take(), recorder: incidents::Recorder::new(), events: 0,
+        store: state_dir.as_ref().and_then(|d| incidents::Store::new(std::path::Path::new(d))) };
+    let mut health = incidents::Health { started: now(), ..Default::default() };
+    let status_path = o.status.clone().map(std::path::PathBuf::from).or_else(|| {
+        if root && std::fs::create_dir_all("/run/ratel").is_ok() { Some("/run/ratel/status.json".into()) }
+        else { state_dir.as_ref().map(|d| std::path::Path::new(d).join("status.json")) }
+    });
+    let feedback = state_dir.as_ref().map(|d| std::path::Path::new(d).join("feedback.jsonl"));
+    let mut feedback_mtime = None;
+    let mut last_status = Instant::now() - Duration::from_secs(3600);
+    let mut last_drop_check = Instant::now();
+    let mut last_health: HashMap<&'static str, f64> = HashMap::new();
+    if eng.st.running && state_dir.is_some() {
+        let a = health_alert("unclean", "medium", "ratel watch was not stopped cleanly (crash, kill or power loss)",
+            vec![format!("last state save {}", incidents::local_time(eng.st.saved_t))]);
+        handle_alert(a, &eng, &mut sink, &mut out, &mut health);
+    }
+    eng.st.running = true;
+    save_state(&state_dir, &mut eng.st);
+
+    let emit = |eng: &mut Engine, ev: Event, sink: &mut Sink| {
+        if let Some(w) = sink.rec.as_mut() {
             let e = if o.anonymize { anon.event(&ev) } else { ev.clone() };
             let _ = writeln!(w, "{}", serde_json::to_string(&e).unwrap_or_default());
         }
+        sink.recorder.push(&ev);
+        if let Some(s) = sink.store.as_mut() {
+            s.on_event(&ev);
+        }
+        sink.events += 1;
         eng.feed(&ev);
     };
-    emit(&mut eng, Event::Caps { t: now(), dns: cap.is_some(), syn: cap.is_some(), udp: cap.is_some() }, &mut rec);
+    emit(&mut eng, Event::Caps { t: now(), dns: cap.is_some(), syn: cap.is_some(), udp: cap.is_some() }, &mut sink);
     eprintln!("ratel watch: running (capture {}, state {}, notify {})", if cap.is_some() { "on" } else { "off" },
         state_dir.as_deref().unwrap_or("none"), if out.notifier.enabled { "on" } else { "off" });
 
@@ -557,6 +636,7 @@ fn live(o: &WOpts, cfg: Config, model: crate::model::NetModel) {
         if let Some(c) = cap.as_mut() {
             pkts.clear();
             c.read(&mut pkts, o.loopback);
+            let mut lookups = 0;
             for p in pkts.drain(..) {
                 let ev = match p {
                     capture::Pkt::Syn { src, dst, sport, dport } => {
@@ -564,24 +644,40 @@ fn live(o: &WOpts, cfg: Config, model: crate::model::NetModel) {
                             continue; // inbound connection attempt
                         }
                         syn_seen = true;
-                        let _ = src;
-                        Event::Syn { t, ent: None, sport, rip: dst, rport: dport }
+                        // Attribute right away: very short connections are gone by the next dump.
+                        let mut ent = None;
+                        lookups += 1;
+                        if let Some(n) = nss.get_mut(&me).filter(|_| lookups <= 64) {
+                            if let Some(e) = n.dump.lookup((src, sport), (dst, dport)) {
+                                if procs.get(e.inode).is_none() && procs_at.elapsed() >= Duration::from_millis(500) {
+                                    procs = procs::Procs::scan();
+                                    procs_at = Instant::now();
+                                }
+                                if let Some(p) = procs.get(e.inode) {
+                                    cookie_ent.insert(e.cookie, (p.ent.clone(), p.pid));
+                                    ent = Some(p.ent.clone());
+                                }
+                            }
+                        }
+                        Event::Syn { t, ent, sport, rip: dst, rport: dport }
                     }
-                    capture::Pkt::Dns { src, sport, msg } => {
-                        let ent = if msg.resp { None } else if local.contains(&src) || o.loopback { udp_port.get(&sport).cloned() } else { None };
+                    capture::Pkt::Dns { src, sport, dport, msg } => {
+                        let ent = if msg.resp { udp_port.get(&dport).cloned() }
+                            else if local.contains(&src) || o.loopback { udp_port.get(&sport).cloned() } else { None };
                         Event::Dns { t, ent, name: msg.name, qtype: msg.qtype, resp: msg.resp, rcode: msg.rcode, answers: msg.answers }
                     }
-                    capture::Pkt::Udp { dst, sport, dport, len } => {
-                        let ent = udp_port.get(&sport).cloned().unwrap_or_else(|| "unattributed-udp".into());
-                        Event::Udp { t, ent, rip: dst, rport: dport, len, scale: capture::UDP_SAMPLE }
+                    capture::Pkt::Udp { src, dst, sport, dport, len, inbound } => {
+                        let (lport, rip, rport) = if inbound { (dport, src, sport) } else { (sport, dst, dport) };
+                        let ent = udp_port.get(&lport).cloned().unwrap_or_else(|| "unattributed-udp".into());
+                        Event::Udp { t, ent, rip, rport, len, scale: capture::UDP_SAMPLE, inbound }
                     }
                     capture::Pkt::Icmp { dst, len } => Event::Icmp { t, rip: dst, len },
                 };
-                emit(&mut eng, ev, &mut rec);
+                emit(&mut eng, ev, &mut sink);
             }
         }
         // ---- closed sockets: final counters
-        for n in nss.values_mut() {
+        for (ns, n) in nss.iter_mut() {
             if let Some(d) = n.destroy.as_mut() {
                 destroyed.clear();
                 d.drain(&mut destroyed);
@@ -591,10 +687,10 @@ fn live(o: &WOpts, cfg: Config, model: crate::model::NetModel) {
                     }
                     let (ent, pid) = cookie_ent.remove(&e.cookie).unwrap_or_else(|| (format!("uid:{}", e.uid), 0));
                     last_counts.remove(&e.cookie);
-                    let inbound = listening.contains(&(0, e.local.1));
+                    let inbound = listening.contains(&(*ns, e.local.1));
                     let pre = initial.as_ref().is_some_and(|i| i.contains(&e.cookie));
                     emit(&mut eng, Event::Tcp { t, id: e.cookie, ent, pid, lport: e.local.1, rip: e.remote.0, rport: e.remote.1,
-                        sent: e.sent, recv: e.recv, inbound, closed: true, pre }, &mut rec);
+                        sent: e.sent, recv: e.recv, inbound, closed: true, pre }, &mut sink);
                 }
             }
         }
@@ -610,22 +706,34 @@ fn live(o: &WOpts, cfg: Config, model: crate::model::NetModel) {
                 let _ = n.dump.dump(libc::AF_INET6 as u8, libc::IPPROTO_TCP as u8, &mut v);
                 entries.extend(v.into_iter().map(|e| (*ns, e)));
             }
-            listening = entries.iter().filter(|(_, e)| e.state == diag::TCP_LISTEN).map(|(_, e)| (0, e.local.1)).collect();
+            listening = entries.iter().filter(|(_, e)| e.state == diag::TCP_LISTEN).map(|(ns, e)| (*ns, e.local.1)).collect();
             if initial.is_none() {
                 initial = Some(entries.iter().map(|(_, e)| e.cookie).collect());
             }
-            let unknown = entries.iter().any(|(_, e)| e.inode != 0 && !cookie_ent.contains_key(&e.cookie) && procs.get(e.inode).is_none());
+            let unknown = entries.iter().any(|(_, e)| e.inode != 0 && !cookie_ent.contains_key(&e.cookie) && procs.get(e.inode).is_none()
+                && unattributable.get(&e.inode).is_none_or(|first| first.elapsed() < Duration::from_secs(30)));
             if (unknown && procs_at.elapsed() >= Duration::from_secs(1)) || procs_at.elapsed() >= Duration::from_secs(15) {
                 procs = procs::Procs::scan();
                 procs_at = Instant::now();
+                if unattributable.len() > 20_000 {
+                    unattributable.clear();
+                }
+                for (_, e) in &entries {
+                    if e.inode != 0 && procs.get(e.inode).is_none() {
+                        // still unattributed after 30 s = kernel-owned (NFS, CIFS) or a race we lost
+                        unattributable.entry(e.inode).or_insert_with(Instant::now);
+                    } else {
+                        unattributable.remove(&e.inode);
+                    }
+                }
             }
             let mut seen = HashSet::new();
-            for (_, e) in &entries {
+            for (ens, e) in &entries {
                 let p = procs.get(e.inode);
                 if e.state == diag::TCP_LISTEN {
                     if let Some(p) = p {
                         if listen_ents.insert(p.ent.clone()) {
-                            emit(&mut eng, Event::Listen { t, ent: p.ent.clone() }, &mut rec);
+                            emit(&mut eng, Event::Listen { t, ent: p.ent.clone() }, &mut sink);
                         }
                     }
                     continue;
@@ -639,20 +747,23 @@ fn live(o: &WOpts, cfg: Config, model: crate::model::NetModel) {
                     (None, Some(p)) => (p.ent.clone(), p.pid),
                     (None, None) => (format!("uid:{}", e.uid), 0),
                 };
-                if !cookie_ent.contains_key(&e.cookie) {
+                if !cookie_ent.contains_key(&e.cookie) && pid != 0 {
                     cookie_ent.insert(e.cookie, (ent.clone(), pid));
-                    if pid != 0 && !o.no_scan && engine::dest_class(&e.remote.0) == engine::DestClass::Public && scanned.insert(ent.clone()) {
-                        let _ = scan_tx.send((ent.clone(), pid));
+                }
+                if pid != 0 && !o.no_scan && engine::dest_class(&e.remote.0) == engine::DestClass::Public && !scanned.contains(&ent) {
+                    scanned.insert(ent.clone());
+                    let _ = scan_tx.send((ent.clone(), pid));
+                }
+                if let Some((s0, r0, at)) = last_counts.get(&e.cookie) {
+                    if (*s0, *r0) == (e.sent, e.recv) && at.elapsed() < Duration::from_secs(300) {
+                        continue; // unchanged: no event (heartbeat every 5 min keeps it alive in the engine)
                     }
                 }
-                if last_counts.get(&e.cookie) == Some(&(e.sent, e.recv)) {
-                    continue; // unchanged: no event
-                }
-                last_counts.insert(e.cookie, (e.sent, e.recv));
-                let inbound = listening.contains(&(0, e.local.1));
+                last_counts.insert(e.cookie, (e.sent, e.recv, Instant::now()));
+                let inbound = listening.contains(&(*ens, e.local.1));
                 let pre = initial.as_ref().is_some_and(|i| i.contains(&e.cookie));
                 emit(&mut eng, Event::Tcp { t, id: e.cookie, ent, pid, lport: e.local.1, rip: e.remote.0, rport: e.remote.1,
-                    sent: e.sent, recv: e.recv, inbound, closed: false, pre }, &mut rec);
+                    sent: e.sent, recv: e.recv, inbound, closed: false, pre }, &mut sink);
             }
             // sockets gone without a destroy event (non-root): treat as closed
             cookie_ent.retain(|c, _| seen.contains(c));
@@ -668,7 +779,7 @@ fn live(o: &WOpts, cfg: Config, model: crate::model::NetModel) {
                     }
                     for (rule, sev, detail) in procs::flags(p, &ext) {
                         if flagged.insert((p.pid, rule)) {
-                            emit(&mut eng, Event::Proc { t, ent: p.ent.clone(), pid: p.pid, rule: rule.into(), sev, detail }, &mut rec);
+                            emit(&mut eng, Event::Proc { t, ent: p.ent.clone(), pid: p.pid, rule: rule.into(), sev, detail }, &mut sink);
                         }
                     }
                 }
@@ -690,31 +801,89 @@ fn live(o: &WOpts, cfg: Config, model: crate::model::NetModel) {
             }
         }
         while let Ok((ent, risk, detail)) = res_rx.try_recv() {
-            emit(&mut eng, Event::Exe { t, ent, risk, detail }, &mut rec);
+            emit(&mut eng, Event::Exe { t, ent, risk, detail }, &mut sink);
         }
         eng.tick(t);
         for a in eng.drain_alerts() {
-            out.alert(&a);
+            handle_alert(a, &eng, &mut sink, &mut out, &mut health);
         }
         while let Ok(a) = file_rx.try_recv() {
             let sha = a.evidence.last().cloned().unwrap_or_default();
             if eng.st.file_alerted.get(&a.entity) != Some(&sha) {
                 eng.st.file_alerted.insert(a.entity.clone(), sha);
-                out.alert(&a);
+                handle_alert(a, &eng, &mut sink, &mut out, &mut health);
             }
         }
         out.notifier.flush(false);
+        // ---- health, status, feedback, digest (every 30 s)
+        if last_status.elapsed() >= Duration::from_secs(30) {
+            last_status = Instant::now();
+            if let Some(c) = &cap {
+                let (pk, dr) = incidents::packet_stats(c.raw_fd());
+                health.cap_packets += pk;
+                health.cap_drops += dr;
+                health.win_packets += pk;
+                health.win_drops += dr;
+            }
+            health.events = sink.events;
+            health.netns = nss.len();
+            health.notify_failures = out.notifier.failures();
+            if last_drop_check.elapsed() >= Duration::from_secs(600) {
+                last_drop_check = Instant::now();
+                let (p, d) = (health.win_packets, health.win_drops);
+                // tp_packets already includes the drops
+                if d >= 100 && d * 100 >= p.max(1) && t - last_health.get("drops").copied().unwrap_or(0.0) > 21_600.0 {
+                    last_health.insert("drops", t);
+                    let a = health_alert("drops", "medium", "packet capture is dropping packets (monitor overloaded?)",
+                        vec![format!("{d} of {p} filtered packets dropped in 10 minutes; DNS/SYN visibility is incomplete")]);
+                    handle_alert(a, &eng, &mut sink, &mut out, &mut health);
+                }
+                health.win_packets = 0;
+                health.win_drops = 0;
+            }
+            if let Some(f) = &feedback {
+                let m = std::fs::metadata(f).and_then(|m| m.modified()).ok();
+                if m != feedback_mtime {
+                    feedback_mtime = m;
+                    eng.cfg.suppress = incidents::load_suppressions(f.parent().unwrap());
+                }
+            }
+            if o.digest_hour >= 0 && incidents::local_hour(t) == o.digest_hour && t - eng.st.last_digest > 20.0 * 3600.0
+                && started.elapsed() > Duration::from_secs(60) {
+                eng.st.last_digest = t;
+                if let Some(sx) = sink.store.as_ref() {
+                    sx.prune(incidents::RETENTION_DAYS);
+                }
+                let (sub, body) = incidents::digest(&health, &eng, t);
+                out.notifier.send_now(&sub, &body);
+            }
+            if let Some(sx) = sink.store.as_mut() {
+                sx.expire(t);
+            }
+            if let Some(sp) = &status_path {
+                let open = sink.store.as_ref().map_or(0, |s| s.open_count());
+                incidents::write_status(sp, &health, &eng, serde_json::json!({"open_incidents": open, "suppressions": eng.cfg.suppress.len(),
+                    "capture": cap.is_some(), "root": root}));
+            }
+        }
         if last_save.elapsed() >= Duration::from_secs(600) {
             last_save = Instant::now();
-            save_state(&state_dir, &eng.st);
-            if let Some(w) = rec.as_mut() {
+            save_state(&state_dir, &mut eng.st);
+            if let Some(w) = sink.rec.as_mut() {
                 let _ = w.flush();
             }
         }
     }
     out.notifier.flush(true);
-    save_state(&state_dir, &eng.st);
-    if let Some(mut w) = rec {
+    out.notifier.shutdown(Duration::from_secs(8));
+    if let Some(sp) = &status_path {
+        health.stopped = true;
+        health.events = sink.events;
+        incidents::write_status(sp, &health, &eng, serde_json::json!({"capture": cap.is_some(), "root": root}));
+    }
+    eng.st.running = false;
+    save_state(&state_dir, &mut eng.st);
+    if let Some(mut w) = sink.rec.take() {
         let _ = w.flush();
     }
     eprintln!("ratel watch: stopped");

@@ -175,6 +175,14 @@ pub fn analyze(data: &[u8]) -> Analysis {
     f.set("few_imports", few as u8 as f32);
     derived_rules(&f, &mut findings);
 
+    // A single hypervisor vendor string without the hypervisor CPUID query is common in
+    // cloud SDKs and system libraries: strong, not conclusive, evidence.
+    let hv_query = f.get("cpuid_hv_leaf") > 0.0 || f.get("cpuid_hvbit") > 0.0;
+    for fd in findings.iter_mut() {
+        if fd.rule == "str_vm_vendor" && fd.strength >= 3 && !hv_query && !fd.evidence.contains(", ") {
+            fd.strength = 2;
+        }
+    }
     Analysis { format, feats: f.v, findings, roles }
 }
 
@@ -395,6 +403,7 @@ fn parse_elf(data: &[u8], f: &mut Fv, findings: &mut Vec<Finding>) -> Option<Par
     let mut entry_off = None;
     let mut max_end = 0usize;
     let mut last_alloc: Option<(u64, u64)> = None;
+    let mut elf_wx: Vec<(String, bool, f32)> = vec![];
     for s in &elf.section_headers {
         let name = elf.shdr_strtab.get_at(s.sh_name).unwrap_or("");
         let off = s.sh_offset as usize;
@@ -424,8 +433,8 @@ fn parse_elf(data: &[u8], f: &mut Fv, findings: &mut Vec<Finding>) -> Option<Par
         }
         if exec && write {
             wx += 1;
-            findings.push(Finding { cap: "packed", rule: "wx_section", strength: 2,
-                evidence: format!("section {name:?} is writable+executable") });
+            let holds_entry = entry >= s.sh_addr && entry < s.sh_addr.saturating_add(s.sh_size);
+            elf_wx.push((name.to_string(), holds_entry, shannon(bytes)));
         }
         if packer_section_name(name) {
             packer += 1;
@@ -434,12 +443,26 @@ fn parse_elf(data: &[u8], f: &mut Fv, findings: &mut Vec<Finding>) -> Option<Par
         }
     }
     let _ = last_alloc;
+    // A writable+executable section is packer-like when it holds the entry point, looks
+    // packed (high entropy) or is the only code; a small helper section next to normal
+    // code (Mesa's "wtext" dispatch stubs) is weak evidence.
+    let exec_count = execn;
+    for (name, holds_entry, ent) in &elf_wx {
+        let packer_like = *holds_entry || *ent > 7.0 || exec_count <= 1;
+        findings.push(Finding { cap: "packed", rule: "wx_section", strength: if packer_like { 2 } else { 1 },
+            evidence: format!("section {name:?} is writable+executable{}", if packer_like { "" } else { " (next to normal code)" }) });
+    }
     let mut rwx_seg = false;
+    let mut rwx_entry = false;
+    let mut rx_seg = false;
     for ph in &elf.program_headers {
         let end = (ph.p_offset.saturating_add(ph.p_filesz)) as usize;
         max_end = max_end.max(end.min(data.len()));
         if ph.p_type == PT_LOAD && ph.p_flags & PF_X != 0 && ph.p_flags & PF_W != 0 {
             rwx_seg = true;
+            rwx_entry |= entry >= ph.p_vaddr && entry < ph.p_vaddr.saturating_add(ph.p_memsz);
+        } else if ph.p_type == PT_LOAD && ph.p_flags & PF_X != 0 {
+            rx_seg = true;
         }
         if elf.section_headers.is_empty() && ph.p_type == PT_LOAD && ph.p_flags & PF_X != 0 {
             let off = ph.p_offset as usize;
@@ -457,8 +480,13 @@ fn parse_elf(data: &[u8], f: &mut Fv, findings: &mut Vec<Finding>) -> Option<Par
     }
     if rwx_seg {
         wx += 1;
-        findings.push(Finding { cap: "packed", rule: "rwx_segment", strength: 2,
-            evidence: "a PT_LOAD segment is mapped writable+executable".into() });
+        // Packers: the code itself is writable (entry inside it, or no other code segment).
+        // A data segment that is merely also executable next to a normal R-X code segment is
+        // a legacy toolchain artifact (i386 text relocations), weak evidence only.
+        let packer_like = rwx_entry || !rx_seg;
+        findings.push(Finding { cap: "packed", rule: "rwx_segment", strength: if packer_like { 2 } else { 1 },
+            evidence: if packer_like { "a PT_LOAD segment holding code is mapped writable+executable".into() }
+                else { "a data segment is mapped writable+executable (legacy toolchain artifact?)".into() } });
     }
     if entry != 0 && !entry_in_exec {
         f.set("entry_anomaly", 1.0);
@@ -581,7 +609,9 @@ fn role_features(data: &[u8], imports: &[String], f: &mut Fv) -> Vec<(usize, Str
     }
     let mut out = vec![];
     for (ri, r) in ROLES.iter().enumerate() {
-        f.set(r.feature, seen[ri].len() as f32);
+        if !r.feature.is_empty() {
+            f.set(r.feature, seen[ri].len() as f32); // roles without a feature are decision-time only
+        }
         if seen[ri].len() >= r.min {
             let mut ev = seen[ri].clone();
             ev.sort();

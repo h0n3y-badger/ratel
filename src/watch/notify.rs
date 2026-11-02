@@ -9,7 +9,9 @@ use std::os::unix::net::{UnixDatagram, UnixStream};
 use std::time::{Duration, Instant};
 
 pub struct Notifier {
-    path: String,
+    tx: Option<std::sync::mpsc::SyncSender<(String, String)>>,
+    worker: Option<std::thread::JoinHandle<()>>,
+    failed: std::sync::Arc<std::sync::atomic::AtomicU64>,
     pub enabled: bool,
     min_sev: u8,
     pending: Vec<Alert>,
@@ -36,10 +38,46 @@ fn one_line(s: &str) -> String {
 
 impl Notifier {
     pub fn new(enabled: bool, min_sev: &str) -> Notifier {
+        let path = std::env::var("NOTIFY_SOCKET").unwrap_or_else(|_| "/run/prosody/notify.sock".into());
+        let failed = std::sync::Arc::new(std::sync::atomic::AtomicU64::new(0));
+        // Delivery happens on its own thread: a wedged Prosody can't stall monitoring.
+        let (tx, rx) = std::sync::mpsc::sync_channel::<(String, String)>(64);
+        let f2 = failed.clone();
+        let worker = std::thread::spawn(move || {
+            for (subject, body) in rx {
+                if let Err(e) = send(&path, &subject, "ratel", &body) {
+                    // Notification lost, not a failure of the monitor: log and carry on.
+                    f2.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+                    syslog(&format!("notify failed ({e}): {subject}"));
+                }
+            }
+        });
         Notifier {
-            path: std::env::var("NOTIFY_SOCKET").unwrap_or_else(|_| "/run/prosody/notify.sock".into()),
-            enabled, min_sev: sev_rank(min_sev).max(1), pending: vec![], first_pending: None, last_sent: None,
+            tx: Some(tx), worker: Some(worker), failed, enabled, min_sev: sev_rank(min_sev).max(1), pending: vec![], first_pending: None, last_sent: None,
             batch: Duration::from_secs(30), sent_today: (0, 0), daily_cap: 60,
+        }
+    }
+
+    pub fn failures(&self) -> u64 {
+        self.failed.load(std::sync::atomic::Ordering::Relaxed)
+    }
+
+    /// Let queued messages go out before the process exits (bounded wait).
+    pub fn shutdown(&mut self, max: Duration) {
+        self.tx.take(); // closes the channel: the worker ends after the queue drains
+        if let Some(w) = self.worker.take() {
+            let t0 = Instant::now();
+            while !w.is_finished() && t0.elapsed() < max {
+                std::thread::sleep(Duration::from_millis(50));
+            }
+        }
+    }
+
+    fn enqueue(&self, subject: String, body: String) {
+        let Some(tx) = &self.tx else { return };
+        if tx.try_send((subject.clone(), body)).is_err() {
+            self.failed.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+            syslog(&format!("notify queue full, dropped: {subject}"));
         }
     }
 
@@ -75,9 +113,13 @@ impl Notifier {
         }
         self.sent_today.1 += 1;
         self.last_sent = Some(Instant::now());
-        if let Err(e) = send(&self.path, &subject, "ratel", &body) {
-            // Notification lost, not a failure of the monitor: log and carry on.
-            syslog(&format!("notify failed ({e}): {subject}"));
+        self.enqueue(subject, body);
+    }
+
+    /// Immediate message outside the alert batching (daily digest).
+    pub fn send_now(&mut self, subject: &str, body: &str) {
+        if self.enabled {
+            self.enqueue(subject.to_string(), body.to_string());
         }
     }
 }
@@ -96,6 +138,9 @@ pub fn render(alerts: &[Alert]) -> (String, String) {
         body += &format!("{} {}\n", a.severity.to_uppercase(), a.title);
         if a.pid != 0 {
             body += &format!("  pid {} ({})\n", a.pid, a.entity);
+        }
+        if !a.incident.is_empty() {
+            body += &format!("  incident {0}: ratel explain {0}\n", a.incident);
         }
         for e in a.evidence.iter().take(5) {
             body += &format!("  - {e}\n");

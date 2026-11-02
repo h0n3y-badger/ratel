@@ -18,6 +18,12 @@ struct Tree {
     r: Vec<u32>,
     /// Leaf values (learning rate already folded in).
     v: Vec<f64>,
+    /// Training samples per node (optional): enables per-feature explanations.
+    #[serde(default)]
+    n: Vec<f64>,
+    /// Expected output of each node's subtree (computed at load from `n`).
+    #[serde(skip)]
+    e: Vec<f64>,
 }
 
 #[derive(Deserialize)]
@@ -52,8 +58,14 @@ impl Model {
         let remap = mf.features.iter().map(|n| idx.get(n.as_str()).copied()).collect::<Vec<_>>();
         let mut caps = vec![];
         let mut n_trees = 0;
-        for (name, cm) in mf.caps {
+        for (name, mut cm) in mf.caps {
             let ci = CAPS.iter().position(|c| *c == name).ok_or(format!("unknown capability {name}"))?;
+            if !cm.trees.iter().all(|t| t.valid(remap.len())) {
+                return Err(format!("{name}: malformed tree"));
+            }
+            for t in cm.trees.iter_mut() {
+                t.prepare();
+            }
             for t in &cm.trees {
                 let n = t.f.len();
                 if t.t.len() != n || t.l.len() != n || t.r.len() != n || t.v.len() != n {
@@ -74,6 +86,24 @@ impl Model {
 
     pub fn is_empty(&self) -> bool {
         self.caps.is_empty()
+    }
+
+    /// Per-feature contributions (scanner feature order) for one capability's score.
+    pub fn explain(&self, feats: &[f32], cap: usize) -> Vec<f64> {
+        let x: Vec<f32> = self.remap.iter().map(|m| m.map_or(0.0, |i| feats[i])).collect();
+        let mut c = vec![0.0; x.len()];
+        if let Some((_, cm)) = self.caps.iter().find(|(ci, _)| *ci == cap) {
+            for t in &cm.trees {
+                t.contrib(&x, &mut c);
+            }
+        }
+        let mut out = vec![0.0; feats.len()];
+        for (i, m) in self.remap.iter().enumerate() {
+            if let Some(j) = m {
+                out[*j] += c[i];
+            }
+        }
+        out
     }
 
     /// Returns per-capability (probability, threshold), indexed like CAPS.
@@ -98,6 +128,36 @@ impl Model {
 }
 
 impl Tree {
+    /// Node expectations bottom-up (children always have higher indices than parents).
+    fn prepare(&mut self) {
+        let k = self.f.len();
+        if self.n.len() != k {
+            return;
+        }
+        let mut e = vec![0.0; k];
+        for i in (0..k).rev() {
+            e[i] = if self.f[i] < 0 { self.v[i] } else {
+                let (l, r) = (self.l[i] as usize, self.r[i] as usize);
+                let (nl, nr) = (self.n[l].max(1e-9), self.n[r].max(1e-9));
+                (nl * e[l] + nr * e[r]) / (nl + nr)
+            };
+        }
+        self.e = e;
+    }
+
+    /// Adds each split's change in expected output to the feature it split on.
+    fn contrib(&self, x: &[f32], out: &mut [f64]) {
+        if self.e.is_empty() {
+            return;
+        }
+        let mut n = 0usize;
+        while self.f[n] >= 0 {
+            let c = if (x[self.f[n] as usize] as f64) <= self.t[n] { self.l[n] } else { self.r[n] } as usize;
+            out[self.f[n] as usize] += self.e[c] - self.e[n];
+            n = c;
+        }
+    }
+
     fn eval(&self, x: &[f32]) -> f64 {
         let mut n = 0usize;
         while self.f[n] >= 0 {
@@ -130,6 +190,22 @@ impl Unit {
         let raw = self.base + self.trees.iter().map(|t| t.eval(&v)).sum::<f64>();
         1.0 / (1.0 + (-raw).exp())
     }
+
+    /// Per-feature contributions to the raw score, indexed like the engine's names.
+    pub fn explain(&self, x: &[f32], nfeat: usize) -> Vec<f64> {
+        let v: Vec<f32> = self.remap.iter().map(|m| m.map_or(0.0, |i| x[i])).collect();
+        let mut c = vec![0.0; v.len()];
+        for t in &self.trees {
+            t.contrib(&v, &mut c);
+        }
+        let mut out = vec![0.0; nfeat];
+        for (i, m) in self.remap.iter().enumerate() {
+            if let Some(j) = m {
+                out[*j] += c[i];
+            }
+        }
+        out
+    }
 }
 
 #[derive(Deserialize)]
@@ -155,6 +231,9 @@ impl NetModel {
             }
             if !u.trees.iter().all(|t| t.valid(u.features.len())) {
                 return Err(format!("net model {name}: malformed tree"));
+            }
+            for t in u.trees.iter_mut() {
+                t.prepare();
             }
         }
         Ok(m)

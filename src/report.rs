@@ -36,6 +36,9 @@ pub struct CapScore {
     pub model_only: bool,
     /// A legitimate role that explains this capability (e.g. "hypervisor" for anti_vm).
     pub excused_by: Option<&'static str>,
+    /// Strongest model reasons: "feature (+contribution)".
+    #[serde(skip_serializing_if = "String::is_empty")]
+    pub why: String,
 }
 
 /// Calibrated model confidence needed to report a capability with no rule evidence.
@@ -69,8 +72,8 @@ fn calibrate(p: f64, thr: f64) -> f64 {
     if p < thr { 0.5 * p / thr } else { 0.5 + 0.5 * (p - thr) / (1.0 - thr) }
 }
 
-pub fn assess(a: &Analysis, m: &Model) -> Assessment {
-    let preds = m.predict(&a.feats);
+pub fn assess(a: &Analysis, m_: &Model) -> Assessment {
+    let preds = m_.predict(&a.feats);
     let mut caps = vec![];
     for (ci, cap) in CAPS.iter().enumerate() {
         let fs: Vec<&Finding> = a.findings.iter().filter(|f| f.cap == *cap).collect();
@@ -81,7 +84,12 @@ pub fn assess(a: &Analysis, m: &Model) -> Assessment {
         let m = model.unwrap_or(0.0);
         let m = if fs.is_empty() && m < MODEL_ONLY_MIN { m.min(0.49) } else { m };
         let conf = m.max(rules);
-        caps.push(CapScore { cap, conf, model, rules, model_only: fs.is_empty() && conf >= 0.5, excused_by: None });
+        let why = if model.unwrap_or(0.0) >= 0.5 {
+            crate::watch::engine::top_reasons(crate::features::FEATURE_NAMES, &m_.explain(&a.feats, ci), 3)
+        } else {
+            String::new()
+        };
+        caps.push(CapScore { cap, conf, model, rules, model_only: fs.is_empty() && conf >= 0.5, excused_by: None, why });
     }
     let raw = |caps: &[CapScore], n: &str| caps.iter().find(|x| x.cap == n).unwrap().conf;
     // Roles excuse capabilities only when the binary doesn't also hide its code:
@@ -183,7 +191,8 @@ pub fn print(p: &Path, r: &Assessment, o: &Opts) {
     };
     if o.json {
         let caps: serde_json::Map<String, serde_json::Value> = r.caps.iter()
-            .map(|c| (c.cap.to_string(), serde_json::json!({"conf": round(c.conf), "model": c.model.map(round), "rules": round(c.rules), "model_only": c.model_only})))
+            .map(|c| (c.cap.to_string(), serde_json::json!({"conf": round(c.conf), "model": c.model.map(round), "rules": round(c.rules),
+                "model_only": c.model_only, "why": c.why})))
             .collect();
         let line = serde_json::json!({
             "path": p.to_string_lossy(), "format": r.format, "risk": round(r.risk), "verdict": r.verdict,
@@ -208,6 +217,9 @@ pub fn print(p: &Path, r: &Assessment, o: &Opts) {
         if origin_tag.is_empty() { String::new() } else { format!("  ({origin_tag})") });
     for (n, ev) in &r.roles {
         println!("    {:<12} {:<26} {}{}", "role", n, ev, if r.roles_applied { "" } else { "  [ignored: binary hides its code]" });
+    }
+    for c in r.caps.iter().filter(|c| c.conf >= 0.5 && !c.why.is_empty() && (o.explain || c.model_only)) {
+        println!("    {:<12} {:<26} {}", c.cap, "model", c.why);
     }
     let limit = if o.explain { usize::MAX } else { 4 };
     for f in r.findings.iter().filter(|f| o.explain || f.strength >= 2).take(limit) {

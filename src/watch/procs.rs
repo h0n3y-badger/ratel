@@ -35,7 +35,7 @@ pub fn is_shell(exe: &str) -> bool {
     SHELLS.contains(&base(exe.trim_end_matches(" (deleted)")))
 }
 
-fn container_of(pid: u32) -> Option<String> {
+pub fn container_of(pid: u32) -> Option<String> {
     let cg = std::fs::read_to_string(format!("/proc/{pid}/cgroup")).ok()?;
     for line in cg.lines() {
         for key in ["docker-", "/docker/", "libpod-", "/libpod/", "containerd/", "/lxc/", "lxc.payload."] {

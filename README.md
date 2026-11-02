@@ -1,6 +1,6 @@
 # ratel
 
-A small "NGAV-lite" in one 2.4 MB static binary:
+A small "NGAV-lite" in one 4 MB static binary:
 
 * `ratel scan`: looks at ELF and PE binaries and reports **capabilities**
   (anti-debugging, anti-VM/sandbox checks, obfuscation, packing, crypto,
@@ -125,85 +125,210 @@ been deployed.**
 
 Footprint, measured in a network namespace while pushing 2 GB of TCP, 300k
 UDP packets and 2,000 short connections through it:
-* 0.28 s of CPU
-* 5.3 MB peak RSS
+* 0.27 s of CPU
+* 12 MB peak RSS (both model sets loaded)
 
 Recording this desktop unprivileged (every 2 s, writing JSON) costs about 1%
 of one core and 11.5 MB.
 
-### How the network models are trained
+### After an alert: incidents, context, review, health
 
-`train/net/pipeline.sh` takes about 4 minutes on this desktop. Every source
-goes through the same Rust engine (`ratel watch --replay --emit`), so training
-features and live features are computed by the same code.
+Detection is the first step. This is what happens after it:
 
-* **Synthetic server traces** (`train/net/gen_traces.py`): 900 simulated
-  servers × 8–48 h, 51M events.
-  * **Benign services modelled on the homelab:** a web server and reverse
-    proxy, a p2p router, Tailscale, legitimate pollers that *do* beacon,
-    backups, package updates, git, ssh with scp downloads, feed fetchers, one-off
-    user uploads, browsing, and background DNS including reverse lookups, DNS
-    blocklists, antivirus hash lookups, CDN hostnames and ACME TXT records.
-  * **Attacks:** 23 labelled attack families.
-* **CTU-13** (Czech Technical University): real traffic from a university
-  network with hosts infected by Neris, Rbot, Virut, Murlo and NSIS.ay. Only
-  the labelled NetFlow records are used (`train/net/fetch_ctu.sh`): no malware,
-  no payloads. Normal hosts of 5 captures are training negatives. Infected
-  hosts are **never** trained on: an earlier attempt that did learned "looks
-  like a 2011 university capture" and flagged 30 of 107 normal hosts.
-* **This desktop's own traffic**: an unprivileged, anonymised recording, used
-  for evaluation only.
+* **Incidents.** Every `medium`/`high` alert opens an incident, or joins one
+  already open for the same process, destination or domain in the last hour.
+  The incident is a JSON-lines file, `/var/lib/ratel/incidents/<id>.jsonl`,
+  holding:
+  * the alerts and the context captured when it opened
+  * that process's events from the **flight recorder**, a ring buffer of the
+    last ~15 minutes of events, so you see what led up to it
+  * every event of that process / host / domain for the **next two hours**,
+    so you see what it did next
 
-Evaluation holds out whole attack families, chooses the threshold on separate
-validation families against the *alert decision* (rules + gated model), and
-counts what would actually reach XMPP (`train/eval_net.py`, with cooldowns):
+  Incident files are kept 90 days.
+* **Context captured at alert time:**
+  * the process tree up to init, user, command line, working directory, start
+    time, container, and the number of open file descriptors
+  * the executable's sha256, and whether it's an unmodified package file,
+    modified, allowlisted or unknown
+  * what ratel had learned about the process: first seen, usual upload,
+    largest hour to one host, static-scan verdict
+  * the destination: its DNS name or "no DNS lookup returned it", and when this
+    process and this machine first contacted it
 
-| held-out attack family (never trained on) | detected |
-|---|---:|
-| exfiltration to odd ports | 49/49 |
-| parallel-connection exfiltration | 60/60 |
-| staged / chunked exfiltration | 43/43 |
-| slow drip (KB per few minutes, hours) | 26/40 |
-| regular beacons | 41/43 |
-| fast DNS tunnel (iodine-like) | 42/42 |
-| HTTP connection flood | 52/52 |
-| UDP flood | 37/46 (the misses are traces without capture) |
+  Model scores come with the features that pushed them up ("model score 0.98
+  because of: bytes sent (1 h) (+2.3), host new for this process (+1.1), …"),
+  computed from the trees themselves. `ratel scan --explain` does the same for
+  binaries.
+* **XMPP messages** carry the incident ID, so you can run
+  `ratel explain <id>` when you see it.
+* **Review on the server:**
+  ```sh
+  ratel alerts --since 24h --min medium    # timeline, grouped by incident
+  ratel explain exfil                      # any unique part of an incident id
+  ratel ack <id>                           # reviewed
+  ratel ack <id> --fp [--any-dest]         # false alarm: suppressed within a minute, no restart
+  ratel status                             # running? learning? capture drops? last alert?
+  ```
+* **Feedback into training.** `ratel ack --fp` records which incidents were
+  false alarms. `train/net/import_feedback.py` replays their recorded events
+  through the engine into benign training rows. `train/net/pipeline.sh` then
+  learns from your real false alarms, not only simulated ones.
+* **Health:**
+  * `/run/ratel/status.json` is rewritten every 30 s (`ratel status` reads it)
+  * kernel packet-drop counters are checked: >1% drops in 10 minutes raises a
+    health alert
+  * a daemon that wasn't stopped cleanly (crash, kill, power loss) raises an
+    alert on its next start
+  * OpenRC's `supervise-daemon` restarts it
+  * failed XMPP deliveries are counted and go to syslog
+* **Daily digest** at 09:00 (`digest-hour`):
+  * the last 24 h of alerts
+  * the top uploaders
+  * processes that started using the network for the first time
+  * monitor health and learning state
 
-| trained families, held-out traces | |
-|---|---:|
-| jittered / long-sleep / named-host / tasking beacons | 48/48 |
-| exfiltration: direct IP / cloud storage / inbound pull / compromised service | 49/50 |
-| UDP exfiltration | 9/14 |
-| reverse shells, spam bots, slow DNS tunnels, DNS exfiltration, TXT C2 | 57/57 |
+  It means a quiet day still produces one message, so silence never means
+  "ratel died".
+* **Logs:**
+  * `/var/log/ratel/alerts.jsonl` holds every alert, including `low`
+  * `/var/log/ratel/watch.log` holds daemon messages
+  * both are rotated by `contrib/ratel.logrotate`
 
-* **False alarms:** 0.26 per host-day across 415 simulated host-days.
-  Nearly all are one-off uploads by user tools (rclone, git, rsync, a Python
-  script) to sites the server had never contacted. Those really do look like
-  exfiltration; `ignore = /usr/bin/rclone` silences an entity.
-* **CTU-13:**
-  * Infected hosts were detected in Neris and Rbot captures, in Murlo
-    (capture 49) and in Virut (54), but not in Virut 46 or NSIS.ay 53. Those
-    botnets mostly spam, flood or run P2P with no beaconing pattern visible in
-    flow records.
-  * About one normal host per capture is flagged. It's the same machine polling
-    something every 31 s for hours; with no DNS in NetFlow it looks exactly like
-    C2.
+
+
+`train/net/pipeline.sh` takes about an hour on this desktop with the
+defaults. Every source goes through the same Rust engine
+(`ratel watch --replay --emit`), so training features and live features are
+computed by the same code.
+
+* **Synthetic server traces** (`train/net/gen_traces.py`): 4,000 simulated
+  servers × 8–96 h, 1.2 billion events.
+  * **Benign services modelled on the homelab:**
+    * a web server and reverse proxy
+    * a p2p router, a Tor relay and torrent seeding, with peers on random
+      ports, including "suspicious" ones by chance
+    * Tailscale, including direct WireGuard UDP
+    * legitimate pollers and websockets that *do* beacon
+    * backups, registry pushes, Syncthing and media streaming
+    * package updates, git, ssh with scp downloads
+    * a mail server, Prometheus scrapes, feed fetchers
+    * one-off user uploads, browsing, including QUIC
+    * DNS that looks like tunnelling: reverse lookups, DNS blocklists,
+      antivirus reputation lookups with long encoded names, CDN hostnames,
+      ACME TXT records
+  * **Attacks:** 34 labelled families (27 flow, 7 DNS). Timing and sizes
+    follow published tool defaults and reports where available:
+    * Cobalt Strike / Mythic / Havoc beacon sleep and jitter
+    * Meterpreter HTTPS back-off
+    * Mirai / IRC heartbeats
+    * iodine, dnscat2 and Cobalt Strike DNS
+    * rclone parallel uploads, MITRE T1030 chunk sizes
+    * webhook exfiltration, XMR stratum traffic
+* **CTU-13:** real traffic from a university network with hosts infected by
+  Neris, Rbot, Virut, Murlo and NSIS.ay.
+  * Only the labelled NetFlow records are used (`train/net/fetch_ctu.sh`):
+    no malware, no payloads.
+  * Normal hosts of 5 captures are training negatives.
+  * Infected hosts are **never** trained on: an earlier attempt that did
+    learned "looks like a 2011 university capture" and flagged 30 of 107
+    normal hosts.
+* **This desktop's own traffic:** 2 h, unprivileged, anonymised, used for
+  evaluation only. It caught a simulator gap. Real p2p peers sometimes listen
+  on "RAT" ports such as 3389 and 7777, and the first model alerted 136 times
+  in 2 h. With realistic peer ports in the simulator it alerts once.
+* **Your false alarms:** `ratel ack --fp` on the server plus
+  `train/net/import_feedback.py` turn real false alarms into training data.
+
+Evaluation counts what would actually reach XMPP: rules plus gated model,
+cooldowns and per-process caps (`train/eval_net.py`). Whole attack families
+are held out of training, and the threshold is chosen on separate validation
+families. Results are split into the **learning day** (first 24 h after
+install, with no baselines yet) and **steady state** (every day after):
+
+| | steady state (1,513 server-days) | learning day (1,342 server-days) |
+|---|---:|---:|
+| attack episodes detected, all families | **96.2%** (682/709) | 63% (959/1530) |
+| attack episodes detected, families never trained on | **95.5%** (472/494) | |
+| false alarms per server per day | **0.028** (≈ 1 per 36 days) | 0.024 |
+
+Steady-state detection per family:
+* **Every episode caught:**
+  * beacons: regular, jittered, back-off, named-host, tasking
+  * DNS beacons, dnscat2-style polling, DNS tunnels and DNS exfiltration
+  * exfiltration: odd ports, parallel streams, rclone, staged chunks, cloud,
+    direct IP, inbound pulls, backup-time disguise
+  * HTTP floods, reverse shells, miners, spam bots, lateral movement
+* **Nearly all caught:**
+  * slow drip 39/41
+  * webhook exfiltration 41/43
+  * low-and-slow 7/8
+  * websocket C2 8/9
+  * long-sleep beacons 7/8
+* **Weak spots:**
+  * UDP flood 31/49: the misses are hosts without packet capture
+  * UDP exfiltration 2/4
+
+How the false alarms were cut 30× (0.84 → 0.028 per server per day) without
+lowering steady-state detection:
+* **Long-known peers:** "never resolved by DNS" counts only for hosts that
+  aren't long-known peers. Syncthing and WireGuard peers never get a DNS name.
+* **Above-baseline uploads** ignore downloads served on inbound connections.
+* **p2p-like processes:** a process talking to 100+ hosts per hour gets no
+  "odd port", "stratum port" or "new host" evidence.
+* **Learning day:** while learning, weak evidence alerts only if the model is
+  very sure.
+* **Per-process cap:** at most 3 alerts of one kind per process per 6 h.
+* **Model alone:** never sends to XMPP. It only logs a `low`.
+
+On **CTU-13**:
+* 0 of 147 normal hosts get an alert.
+* Infected hosts are detected in 7 of 9 captures. All held-out botnet
+  families are detected except NSIS.ay (P2P) and one Rbot DDoS capture.
+
+The 2 h desktop recording gives 1 alert: some program reconnecting every 11 s
+with 20% jitter.
+
+**Hardening:**
+* **Fuzzing:** the parsers that see attacker-controlled bytes (DNS, packet
+  headers, netlink) are fuzzed in the test suite with 3.6M mutated inputs.
+  That found and fixed one bug: IPv4 headers with IHL < 5 were accepted.
+* **Code reviews:** two independent reviews found 25 issues and all are
+  fixed. Among them:
+  * a local user could crash the daemon by truncating a file mid-scan
+    (now read instead of mmapped)
+  * idle connections were double-counted after 15 min
+  * XMPP was lost if Prosody started after ratel
+  * netlink replies weren't matched to their requests
+  * unbounded memory under a SYN flood
+  * the notifier could block the main loop
+  * clock steps stopped detection
+  * suppressions didn't match across PIDs
+* **Real packets:** `unshare -rn python3 train/net/sandbox_test.py` checks
+  that exfiltration, DNS tunnel, beacon, reverse shell, ICMP tunnel, port scan,
+  the file scan and the XMPP path all fire on real traffic, and that the
+  benign traffic doesn't.
+* **Real Alpine:** `train/net/alpine_test.sh` runs the static binary inside an
+  Alpine 3.24 minirootfs, without root. All 17 package binaries verify against
+  apk's database. Two tampered files are reported `MODIFIED`/`HIGH`. The
+  allowlist works, and `watch` starts, captures, writes status and stops
+  cleanly.
 
 Limits:
 * **Root required:** the monitor needs root (capture, destroy events,
   container namespaces, attribution).
-* **Short-lived connections:** a connection that opens and closes between two
-  dumps gets exact bytes, but only `uid:N` attribution.
+* **Very short connections:** a connection that opens and closes before the
+  kernel can be asked about it gets exact bytes but only `uid:N`
+  attribution. Most connections are attributed at SYN time.
 * **Encrypted DNS:** DNS over HTTPS or TLS is invisible as DNS. It's just HTTPS
   flows to a resolver.
 * **UDP volume is sampled:** small UDP exfiltration and UDP-only C2 are weak
   spots.
+* **One-off uploads:** the remaining false alarms are uploads by user tools
+  (scp, git, curl) to hosts never seen before. They are indistinguishable from
+  exfiltration by traffic alone. Use `ratel ack <id> --fp` or `ignore =`.
 * **No real exfiltration data:** there's no public labelled dataset for
-  exfiltration, so those families are synthetic. The engine was checked
-  end-to-end on real packets in an unprivileged network namespace
-  (`unshare -rn python3 train/net/sandbox_test.py`): exfiltration, DNS tunnel,
-  beacon, reverse shell, ICMP tunnel, port scan, the file scan and the XMPP
-  path all fire, and the benign traffic doesn't.
+  exfiltration, so those families are synthetic.
 
 ## Telling legitimate software apart
 
@@ -317,15 +442,16 @@ training binaries, including 1,002 Alpine binaries and 537 legit-tool binaries;
 held-out Alpine binaries; 448 binaries from held-out games.
 
 System = what `ratel scan` reports (model OR a rule of strength ≥ 2).
+Model: 200 trees per capability, depth 3, chosen by `train/sweep_static.py`.
 
 | capability  | recall, unseen technique families | recall, known techniques | FPR synthetic negatives | flag rate, flatpak holdout | flag rate, Alpine holdout |
 |-------------|-----:|-----:|-----:|-----:|-----:|
-| anti_debug  | 0.61 | 0.63 | 2.2% | 0.6% | 1.8% |
-| anti_vm     | 0.46 | 0.71 | 0.0% | 0.6% | 1.4% |
-| obfuscation | 0.22 | 0.38 | 2.0% | 1.3% | 0.6% |
-| packed      | 0.55 | 0.99 | 0.5% | 0.2% | 0.4% |
-| crypto      | 0.66 | 0.77 | 1.3% | 6.1%* | 9.6%* |
-| network     | 0.96 | 1.00 | 1.4% | 7.9%* | 14.6%* |
+| anti_debug  | 0.64 | 0.69 | 2.2% | 0.6% | 1.8% |
+| anti_vm     | 0.47 | 0.82 | 0.0% | 0.8% | 1.2% |
+| obfuscation | 0.27 | 0.45 | 1.8% | 1.4% | 0.6% |
+| packed      | 0.55 | 1.00 | 0.4% | 0.2% | 0.4% |
+| crypto      | 0.69 | 0.78 | 1.4% | 5.9%* | 8.8%* |
+| network     | 0.96 | 1.00 | 1.7% | 7.9%* | 14.6%* |
 
 \* real binaries really do crypto and networking; those rates are mostly true positives.
 
@@ -336,10 +462,11 @@ files):
 | held-out set | files | susp+high | not-excused detections that dropped |
 |---|---:|---|---|
 | debuggers (lldb, rizin, ltrace) | 57 | 0% → 0% | anti_debug 18% → 0% |
-| hypervisors (VirtualBox, Firecracker) | 66 | 16.7% → 6.1% | anti_vm 45% → 23% |
-| container runtimes (podman, crun) | 12 | 33% → 17% | anti_vm 50% → 17% |
-| VM guest tools (eval only, really detect VMs) | 80 | 7.5% → 7.5% | anti_vm 59% → 47% |
-| Alpine holdout | 513 | 1.8% → 1.0% | |
+| hypervisors (VirtualBox, Firecracker) | 66 | 16.7% → 4.5% | anti_vm 45% → 23% |
+| container runtimes (podman, crun) | 12 | 33% → 17% | anti_vm 50% → 0% |
+| VM guest tools (eval only, really detect VMs) | 80 | 7.5% → 3.7% | anti_vm 59% → 50% |
+| Alpine holdout | 513 | 1.8% → 0.4% | |
+| flatpak holdout | 5,278 | 0.2% → 0.0% | |
 
 On this machine's /usr (13.6k files), `high`/`suspicious` went from 7/40 to 2/22
 without package trust: libc and musl libc stay `high` because they implement
@@ -347,12 +474,45 @@ ptrace and memfd. With package trust, nothing is above `low`, because every one 
 those files is verified against pacman.
 
 Footprint (static musl build, scanning /usr/bin + /usr/lib, 13.6k files):
-2.4 MB binary (with `watch`), ~30 MiB heap regardless of thread count (files are mmapped; RSS
+4 MB binary (with `watch` and both model sets), ~30 MiB heap regardless of thread count (files are mmapped; RSS
 including mapped file pages is 130 MiB with `-j1`), 108 s single-threaded, 28 s
 with 4 threads, ~30 ms for one small file. Runs on baseline x86-64 (no AVX
 required; memchr/aho-corasick pick SIMD at runtime).
 
-### Known limits
+### How far can training go on this hardware?
+
+Both trainers measure a learning curve: validation quality vs. how much training
+data the model gets. Each also runs a hyperparameter sweep (successive halving,
+scored on the validation families only), so "train more" is a measured
+question, not a guess. Everything runs on the CPU (16 cores). The GPU isn't
+needed: one network-model fit on 2M rows takes 40–100 s.
+
+* **Static (binary) model** (`train/sweep_static.py`, 36 configurations):
+  * The learning curve is flat: mean validation F1 is 0.57 / 0.56 / 0.59 at
+    25 / 50 / 100% of the corpus. More synthetic binaries of the same kind
+    won't help.
+  * Recall on unseen families is limited by how many *different* techniques
+    exist, not how many samples.
+  * Tuning bought +0.02 (0.577 → 0.595 mean recall on unseen families).
+* **Network flow model** (`train/net/sweep.py`, 36 configurations):
+
+  | training traces | validation F1 (default params) |
+  |---|---|
+  | 10% | 0.820 |
+  | 25% | 0.867 |
+  | 50% | 0.888 |
+  | 100% (2,000 traces) | 0.907 |
+
+  * Still rising, so the corpus was doubled to 4,000 traces.
+  * Capacity mattered more than data: 800 trees of depth 4 reach **0.953**
+    on the same data.
+  * With 4,000 traces and the extra attack families and hard negatives, the
+    final model scores **0.986** validation F1 (recall 0.97).
+* **DNS model:** saturated. Validation F1 is 0.999 at every data size and
+  every configuration. Real DNS tunnels are loud, and the remaining risk is
+  quiet DNS beacons (see limits).
+
+
 
 * Synthetic training data: techniques are single functions inside small programs.
   Whole-program obfuscators (OLLVM, VMProtect) leave much stronger traces than the

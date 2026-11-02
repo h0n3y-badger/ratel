@@ -55,8 +55,17 @@ pub enum Event {
         #[serde(default)]
         answers: Vec<IpAddr>,
     },
-    /// Sampled outbound UDP packet; it stands for `scale` packets.
-    Udp { t: f64, ent: String, rip: IpAddr, rport: u16, len: u32, scale: u32 },
+    /// Sampled UDP packet (outbound, or `inbound` from the remote); it stands for `scale` packets.
+    Udp {
+        t: f64,
+        ent: String,
+        rip: IpAddr,
+        rport: u16,
+        len: u32,
+        scale: u32,
+        #[serde(default)]
+        inbound: bool,
+    },
     /// Outbound ICMP echo request (payload length).
     Icmp { t: f64, rip: IpAddr, len: u32 },
     /// Process-level red flag (reverse shell, fileless executable, ...); sev 1..3.

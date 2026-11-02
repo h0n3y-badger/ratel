@@ -34,6 +34,7 @@ usage:
       --scan-exes                 statically scan each networked process's executable
   ratel info                      show embedded model info
   ratel watch [opts]              network behaviour monitor with alerts (see ratel watch --help)
+  ratel alerts | explain ID | ack ID [--fp] | status   review what the monitor found
 
 common opts:
   --jobs N        worker threads (default: number of CPUs, max 4)
@@ -108,8 +109,28 @@ fn die(msg: &str) -> ! {
     std::process::exit(2);
 }
 
-/// Walk inputs without following symlinks; yields regular files.
+/// Walk inputs; yields regular files. Paths given on the command line are followed
+/// if they are symlinks (on usr-merged systems /bin -> usr/bin); symlinks found
+/// while walking are not.
 fn collect(paths: &[PathBuf], out: &mut Vec<PathBuf>) {
+    for p in paths {
+        let md = std::fs::symlink_metadata(p).and_then(|m| if m.is_symlink() { std::fs::metadata(p) } else { Ok(m) });
+        let Ok(md) = md else {
+            eprintln!("ratel: cannot stat {}", p.display());
+            continue;
+        };
+        if md.is_dir() {
+            let Ok(rd) = std::fs::read_dir(p) else { continue };
+            let mut kids: Vec<PathBuf> = rd.filter_map(|e| e.ok().map(|e| e.path())).collect();
+            kids.sort();
+            walk(&kids, out);
+        } else if md.is_file() {
+            out.push(p.clone());
+        }
+    }
+}
+
+fn walk(paths: &[PathBuf], out: &mut Vec<PathBuf>) {
     for p in paths {
         let Ok(md) = std::fs::symlink_metadata(p) else {
             eprintln!("ratel: cannot stat {}", p.display());
@@ -119,7 +140,7 @@ fn collect(paths: &[PathBuf], out: &mut Vec<PathBuf>) {
             let Ok(rd) = std::fs::read_dir(p) else { continue };
             let mut kids: Vec<PathBuf> = rd.filter_map(|e| e.ok().map(|e| e.path())).collect();
             kids.sort();
-            collect(&kids, out);
+            walk(&kids, out);
         } else if md.is_file() {
             out.push(p.clone());
         }
@@ -140,6 +161,22 @@ impl std::ops::Deref for Bytes {
             Bytes::Heap(v) => v,
         }
     }
+}
+
+/// Like `read_candidate`, but always reads into memory (no mmap).
+pub fn read_candidate_heap(p: &Path, max: u64) -> Option<Bytes> {
+    use std::io::Read;
+    let fh = std::fs::File::open(p).ok()?;
+    let md = fh.metadata().ok()?;
+    if !md.is_file() || md.len() < 64 || md.len() > max {
+        return None;
+    }
+    let mut buf = Vec::with_capacity(md.len() as usize);
+    fh.take(max).read_to_end(&mut buf).ok()?;
+    if buf.len() < 64 || (&buf[..4] != b"\x7fELF" && &buf[..2] != b"MZ") {
+        return None;
+    }
+    Some(Bytes::Heap(buf))
 }
 
 /// Opens a file if it looks like ELF/PE and is under the size cap.
@@ -170,6 +207,9 @@ pub fn read_candidate(p: &Path, max: u64) -> Option<Bytes> {
 }
 
 pub struct ScanCfg {
+    /// Read files into memory instead of mmapping them: a file truncated while being
+    /// scanned can't SIGBUS the process (the daemon scans world-writable dirs).
+    pub heap: bool,
     pub jobs: usize,
     pub max: u64,
     pub allow: Vec<String>,
@@ -189,7 +229,7 @@ pub fn scan_files(paths: &[PathBuf], c: &ScanCfg, m: &model::Model,
     let mut trust_db: Option<trust::Trust> = None;
     let mut err = None;
     let mut n = 0usize;
-    par_files(&files, c.jobs, |p| read_candidate(p, c.max).map(|d| {
+    par_files(&files, c.jobs, |p| (if c.heap { read_candidate_heap(p, c.max) } else { read_candidate(p, c.max) }).map(|d| {
         let r = report::assess(&features::analyze(&d), m);
         // Hash only what provenance can change: non-clean files (or all, with integrity checks).
         let h = (c.integrity || r.risk >= 0.25).then(|| trust::hash(&d, kind));
@@ -257,6 +297,13 @@ fn main() {
         watch::run(&args[1..]);
         return;
     }
+    match cmd.as_str() {
+        "alerts" => return watch::cli::alerts(&args[1..]),
+        "explain" | "incident" => return watch::cli::explain(&args[1..]),
+        "ack" => return watch::cli::ack(&args[1..]),
+        "status" => return watch::cli::status(&args[1..]),
+        _ => {}
+    }
     if cmd == "net-feature-names" {
         println!("{}", serde_json::json!({"flow": watch::engine::FLOW_FEATURES, "dns": watch::engine::DNS_FEATURES}));
         return;
@@ -306,7 +353,7 @@ fn main() {
                 eprintln!("ratel: warning: no model embedded, rules only");
             }
             let mut worst = 0.0f64;
-            let cfg = ScanCfg { jobs: o.jobs, max, allow: o.allow.clone(), integrity: o.integrity, pkg_trust: !o.no_pkg_trust };
+            let cfg = ScanCfg { heap: false, jobs: o.jobs, max, allow: o.allow.clone(), integrity: o.integrity, pkg_trust: !o.no_pkg_trust };
             let n = scan_files(&o.paths, &cfg, &m, |p, r, _| {
                 worst = worst.max(report::alerting_risk(r));
                 report::print(p, r, &o);
@@ -334,7 +381,7 @@ fn main() {
             }
         }
         "net" => net::run(&o),
-        "-h" | "--help" | "help" => print!("{USAGE}"),
+        "-h" | "--help" | "help" => print!("{USAGE}\n{}", watch::cli::USAGE),
         c => die(&format!("unknown command {c}\n\n{USAGE}")),
     }
 }

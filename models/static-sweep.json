@@ -1,0 +1,2241 @@
+{
+ "curve": [
+  {
+   "frac": 0.25,
+   "mean_val_f1": 0.5739807464612176,
+   "mean_test_system_recall": 0.5703508904839508
+  },
+  {
+   "frac": 0.5,
+   "mean_val_f1": 0.5632252789394848,
+   "mean_test_system_recall": 0.5601248464100338
+  },
+  {
+   "frac": 1.0,
+   "mean_val_f1": 0.5884044329108077,
+   "mean_test_system_recall": 0.5770134279106117
+  }
+ ],
+ "sweep": [
+  {
+   "params": {
+    "n_estimators": 90,
+    "max_depth": 3,
+    "learning_rate": 0.05,
+    "min_samples_leaf": 6
+   },
+   "mean_val_f1": 0.5446105765980063,
+   "mean_test_system_recall": 0.5451343582157343,
+   "caps": {
+    "anti_debug": {
+     "val_f1": 0.4218106995884774,
+     "system_recall": 0.4293015332197615,
+     "heldout_family_recall": 0.19818285065303803,
+     "system_synth_fpr": 0.014213863984255412,
+     "system_real_holdout_flag_rate": 0.0060629026146267525,
+     "heldout_family_auc": 0.7319170133364328
+    },
+    "anti_vm": {
+     "val_f1": 0.7296137339055794,
+     "system_recall": 0.47560975609756095,
+     "heldout_family_recall": 0.3951219512195122,
+     "system_synth_fpr": 0.0014005602240896359,
+     "system_real_holdout_flag_rate": 0.0081470253884047,
+     "heldout_family_auc": 0.7960392042996061
+    },
+    "obfuscation": {
+     "val_f1": 0.43271767810026385,
+     "system_recall": 0.20033482142857142,
+     "heldout_family_recall": 0.16964285714285715,
+     "system_synth_fpr": 0.026843741169821984,
+     "system_real_holdout_flag_rate": 0.012504736642667677,
+     "heldout_family_auc": 0.7257762987930407
+    },
+    "packed": {
+     "val_f1": 0.0,
+     "system_recall": 0.5483549351944168,
+     "heldout_family_recall": 0.5104685942173479,
+     "system_synth_fpr": 0.008253610954792722,
+     "system_real_holdout_flag_rate": 0.0022735884804850324,
+     "heldout_family_auc": 0.9907748149286897
+    },
+    "crypto": {
+     "val_f1": 0.7154362416107383,
+     "system_recall": 0.6587086272381986,
+     "heldout_family_recall": 0.5447639717851329,
+     "system_synth_fpr": 0.007350939286686632,
+     "system_real_holdout_flag_rate": 0.05665024630541872,
+     "heldout_family_auc": 0.879666685329247
+    },
+    "network": {
+     "val_f1": 0.9680851063829787,
+     "system_recall": 0.9584964761158966,
+     "heldout_family_recall": 0.9584964761158966,
+     "system_synth_fpr": 0.014435436029266363,
+     "system_real_holdout_flag_rate": 0.07919666540356196,
+     "heldout_family_auc": 0.9833559133009764
+    }
+   }
+  },
+  {
+   "params": {
+    "n_estimators": 90,
+    "max_depth": 3,
+    "learning_rate": 0.05,
+    "min_samples_leaf": 12
+   },
+   "mean_val_f1": 0.55722835335293,
+   "mean_test_system_recall": 0.5472591234846963,
+   "caps": {
+    "anti_debug": {
+     "val_f1": 0.5124760076775432,
+     "system_recall": 0.46280522430437254,
+     "heldout_family_recall": 0.2526973310618966,
+     "system_synth_fpr": 0.019899409577957577,
+     "system_real_holdout_flag_rate": 0.0060629026146267525,
+     "heldout_family_auc": 0.7375751159218745
+    },
+    "anti_vm": {
+     "val_f1": 0.7303974221267454,
+     "system_recall": 0.47560975609756095,
+     "heldout_family_recall": 0.3931707317073171,
+     "system_synth_fpr": 0.0011671335200746965,
+     "system_real_holdout_flag_rate": 0.007768093974990527,
+     "heldout_family_auc": 0.7963414064812918
+    },
+    "obfuscation": {
+     "val_f1": 0.41740674955595025,
+     "system_recall": 0.18024553571428573,
+     "heldout_family_recall": 0.14787946428571427,
+     "system_synth_fpr": 0.028256569652444195,
+     "system_real_holdout_flag_rate": 0.012315270935960592,
+     "heldout_family_auc": 0.7217360981461672
+    },
+    "packed": {
+     "val_f1": 0.0,
+     "system_recall": 0.5483549351944168,
+     "heldout_family_recall": 0.5104685942173479,
+     "system_synth_fpr": 0.008066028887638342,
+     "system_real_holdout_flag_rate": 0.0022735884804850324,
+     "heldout_family_auc": 0.9936070610154156
+    },
+    "crypto": {
+     "val_f1": 0.7149564050972501,
+     "system_recall": 0.6549104720564297,
+     "heldout_family_recall": 0.5572436245252306,
+     "system_synth_fpr": 0.008439967329158726,
+     "system_real_holdout_flag_rate": 0.0610079575596817,
+     "heldout_family_auc": 0.880213193636779
+    },
+    "network": {
+     "val_f1": 0.9681335356600911,
+     "system_recall": 0.961628817541112,
+     "heldout_family_recall": 0.961628817541112,
+     "system_synth_fpr": 0.015028673126359502,
+     "system_real_holdout_flag_rate": 0.07919666540356196,
+     "heldout_family_auc": 0.9833619525196626
+    }
+   }
+  },
+  {
+   "params": {
+    "n_estimators": 90,
+    "max_depth": 3,
+    "learning_rate": 0.12,
+    "min_samples_leaf": 6
+   },
+   "mean_val_f1": 0.6093456958174025,
+   "mean_test_system_recall": 0.5878752378829949,
+   "caps": {
+    "anti_debug": {
+     "val_f1": 0.6863406408094435,
+     "system_recall": 0.6218057921635435,
+     "heldout_family_recall": 0.44236229415105055,
+     "system_synth_fpr": 0.021867483052700636,
+     "system_real_holdout_flag_rate": 0.0060629026146267525,
+     "heldout_family_auc": 0.7694000027070479
+    },
+    "anti_vm": {
+     "val_f1": 0.7393675027262814,
+     "system_recall": 0.4585365853658537,
+     "heldout_family_recall": 0.3751219512195122,
+     "system_synth_fpr": 0.0,
+     "system_real_holdout_flag_rate": 0.006252368321333838,
+     "heldout_family_auc": 0.8403273667190453
+    },
+    "obfuscation": {
+     "val_f1": 0.42402826855123676,
+     "system_recall": 0.22600446428571427,
+     "heldout_family_recall": 0.19698660714285715,
+     "system_synth_fpr": 0.025713478383724217,
+     "system_real_holdout_flag_rate": 0.013641530882910194,
+     "heldout_family_auc": 0.7376420870251887
+    },
+    "packed": {
+     "val_f1": 0.0,
+     "system_recall": 0.5483549351944168,
+     "heldout_family_recall": 0.5104685942173479,
+     "system_synth_fpr": 0.004689551678859501,
+     "system_real_holdout_flag_rate": 0.0018946570670708603,
+     "heldout_family_auc": 0.9939818511077161
+    },
+    "crypto": {
+     "val_f1": 0.8382526564344747,
+     "system_recall": 0.7140531741725448,
+     "heldout_family_recall": 0.6831253391209984,
+     "system_synth_fpr": 0.01769670569017152,
+     "system_real_holdout_flag_rate": 0.06252368321333839,
+     "heldout_family_auc": 0.8863812257001754
+    },
+    "network": {
+     "val_f1": 0.9680851063829787,
+     "system_recall": 0.9584964761158966,
+     "heldout_family_recall": 0.9584964761158966,
+     "system_synth_fpr": 0.014435436029266363,
+     "system_real_holdout_flag_rate": 0.07919666540356196,
+     "heldout_family_auc": 0.9828584520181753
+    }
+   }
+  },
+  {
+   "params": {
+    "n_estimators": 90,
+    "max_depth": 3,
+    "learning_rate": 0.12,
+    "min_samples_leaf": 12
+   },
+   "mean_val_f1": 0.5884044329108077,
+   "mean_test_system_recall": 0.5770134279106117,
+   "caps": {
+    "anti_debug": {
+     "val_f1": 0.6824324324324325,
+     "system_recall": 0.6115843270868825,
+     "heldout_family_recall": 0.4332765474162408,
+     "system_synth_fpr": 0.02164880822217363,
+     "system_real_holdout_flag_rate": 0.0060629026146267525,
+     "heldout_family_auc": 0.7708144352210274
+    },
+    "anti_vm": {
+     "val_f1": 0.738562091503268,
+     "system_recall": 0.45902439024390246,
+     "heldout_family_recall": 0.3751219512195122,
+     "system_synth_fpr": 0.0,
+     "system_real_holdout_flag_rate": 0.006252368321333838,
+     "heldout_family_auc": 0.7972411810252557
+    },
+    "obfuscation": {
+     "val_f1": 0.42541924095322153,
+     "system_recall": 0.22265625,
+     "heldout_family_recall": 0.19587053571428573,
+     "system_synth_fpr": 0.020344730149759818,
+     "system_real_holdout_flag_rate": 0.013452065176203107,
+     "heldout_family_auc": 0.7386830230997457
+    },
+    "packed": {
+     "val_f1": 0.0,
+     "system_recall": 0.5483549351944168,
+     "heldout_family_recall": 0.5104685942173479,
+     "system_synth_fpr": 0.004877133746013881,
+     "system_real_holdout_flag_rate": 0.0018946570670708603,
+     "heldout_family_auc": 0.9934071355619879
+    },
+    "crypto": {
+     "val_f1": 0.7171052631578947,
+     "system_recall": 0.6619641888225719,
+     "heldout_family_recall": 0.6169289202387411,
+     "system_synth_fpr": 0.012523822488429077,
+     "system_real_holdout_flag_rate": 0.06119742326638879,
+     "heldout_family_auc": 0.8872637343173386
+    },
+    "network": {
+     "val_f1": 0.9669075694180297,
+     "system_recall": 0.9584964761158966,
+     "heldout_family_recall": 0.9584964761158966,
+     "system_synth_fpr": 0.013842198932173226,
+     "system_real_holdout_flag_rate": 0.07919666540356196,
+     "heldout_family_auc": 0.982705845607529
+    }
+   }
+  },
+  {
+   "params": {
+    "n_estimators": 90,
+    "max_depth": 4,
+    "learning_rate": 0.05,
+    "min_samples_leaf": 6
+   },
+   "mean_val_f1": 0.595287144839768,
+   "mean_test_system_recall": 0.5808406763472814,
+   "caps": {
+    "anti_debug": {
+     "val_f1": 0.5864253393665159,
+     "system_recall": 0.6104486087450313,
+     "heldout_family_recall": 0.4122657580919932,
+     "system_synth_fpr": 0.020992783730592608,
+     "system_real_holdout_flag_rate": 0.0060629026146267525,
+     "heldout_family_auc": 0.773261084957469
+    },
+    "anti_vm": {
+     "val_f1": 0.7366120218579235,
+     "system_recall": 0.44390243902439025,
+     "heldout_family_recall": 0.35804878048780486,
+     "system_synth_fpr": 0.0,
+     "system_real_holdout_flag_rate": 0.0060629026146267525,
+     "heldout_family_auc": 0.7959954225592677
+    },
+    "obfuscation": {
+     "val_f1": 0.45714285714285713,
+     "system_recall": 0.22823660714285715,
+     "heldout_family_recall": 0.20200892857142858,
+     "system_synth_fpr": 0.02317038711500424,
+     "system_real_holdout_flag_rate": 0.012504736642667677,
+     "heldout_family_auc": 0.7375133398760748
+    },
+    "packed": {
+     "val_f1": 0.0,
+     "system_recall": 0.5483549351944168,
+     "heldout_family_recall": 0.5104685942173479,
+     "system_synth_fpr": 0.0052522978803226416,
+     "system_real_holdout_flag_rate": 0.0022735884804850324,
+     "heldout_family_auc": 0.992078070796053
+    },
+    "crypto": {
+     "val_f1": 0.8234575442883323,
+     "system_recall": 0.695604991861096,
+     "heldout_family_recall": 0.631578947368421,
+     "system_synth_fpr": 0.007350939286686632,
+     "system_real_holdout_flag_rate": 0.06062902614626753,
+     "heldout_family_auc": 0.8868513602288198
+    },
+    "network": {
+     "val_f1": 0.9680851063829787,
+     "system_recall": 0.9584964761158966,
+     "heldout_family_recall": 0.9584964761158966,
+     "system_synth_fpr": 0.014435436029266363,
+     "system_real_holdout_flag_rate": 0.07919666540356196,
+     "heldout_family_auc": 0.9829651448816304
+    }
+   }
+  },
+  {
+   "params": {
+    "n_estimators": 90,
+    "max_depth": 4,
+    "learning_rate": 0.05,
+    "min_samples_leaf": 12
+   },
+   "mean_val_f1": 0.5775743099328495,
+   "mean_test_system_recall": 0.5996171059777387,
+   "caps": {
+    "anti_debug": {
+     "val_f1": 0.5864253393665159,
+     "system_recall": 0.6138557637705849,
+     "heldout_family_recall": 0.40999432140829073,
+     "system_synth_fpr": 0.021211458561119615,
+     "system_real_holdout_flag_rate": 0.006441834028040924,
+     "heldout_family_auc": 0.7666593650879983
+    },
+    "anti_vm": {
+     "val_f1": 0.7338444687842278,
+     "system_recall": 0.44341463414634147,
+     "heldout_family_recall": 0.3595121951219512,
+     "system_synth_fpr": 0.0,
+     "system_real_holdout_flag_rate": 0.0060629026146267525,
+     "heldout_family_auc": 0.7961503381840542
+    },
+    "obfuscation": {
+     "val_f1": 0.41843971631205673,
+     "system_recall": 0.20256696428571427,
+     "heldout_family_recall": 0.17410714285714285,
+     "system_synth_fpr": 0.01864933597061317,
+     "system_real_holdout_flag_rate": 0.012315270935960592,
+     "heldout_family_auc": 0.7335291950914302
+    },
+    "packed": {
+     "val_f1": 0.0,
+     "system_recall": 0.6969092721834497,
+     "heldout_family_recall": 0.6590229312063809,
+     "system_synth_fpr": 0.0052522978803226416,
+     "system_real_holdout_flag_rate": 0.0022735884804850324,
+     "heldout_family_auc": 0.9948246612628819
+    },
+    "crypto": {
+     "val_f1": 0.7578676942838792,
+     "system_recall": 0.6793271839392295,
+     "heldout_family_recall": 0.6180141074335322,
+     "system_synth_fpr": 0.009256738361012797,
+     "system_real_holdout_flag_rate": 0.06025009473285335,
+     "heldout_family_auc": 0.8880121825779445
+    },
+    "network": {
+     "val_f1": 0.9688686408504176,
+     "system_recall": 0.961628817541112,
+     "heldout_family_recall": 0.961628817541112,
+     "system_synth_fpr": 0.014830927427328456,
+     "system_real_holdout_flag_rate": 0.07919666540356196,
+     "heldout_family_auc": 0.9833788313616316
+    }
+   }
+  },
+  {
+   "params": {
+    "n_estimators": 90,
+    "max_depth": 4,
+    "learning_rate": 0.12,
+    "min_samples_leaf": 6
+   },
+   "mean_val_f1": 0.5950860165571206,
+   "mean_test_system_recall": 0.5869964603375158,
+   "caps": {
+    "anti_debug": {
+     "val_f1": 0.56036866359447,
+     "system_recall": 0.5979557069846678,
+     "heldout_family_recall": 0.38216922203293585,
+     "system_synth_fpr": 0.021430133391646622,
+     "system_real_holdout_flag_rate": 0.0060629026146267525,
+     "heldout_family_auc": 0.7677956422241354
+    },
+    "anti_vm": {
+     "val_f1": 0.742671009771987,
+     "system_recall": 0.46634146341463417,
+     "heldout_family_recall": 0.3848780487804878,
+     "system_synth_fpr": 0.0,
+     "system_real_holdout_flag_rate": 0.006252368321333838,
+     "heldout_family_auc": 0.8391348978615836
+    },
+    "obfuscation": {
+     "val_f1": 0.4699828473413379,
+     "system_recall": 0.24274553571428573,
+     "heldout_family_recall": 0.21651785714285715,
+     "system_synth_fpr": 0.013845719129697655,
+     "system_real_holdout_flag_rate": 0.012694202349374763,
+     "heldout_family_auc": 0.7482882069188229
+    },
+    "packed": {
+     "val_f1": 0.0,
+     "system_recall": 0.5483549351944168,
+     "heldout_family_recall": 0.5104685942173479,
+     "system_synth_fpr": 0.004314387544550741,
+     "system_real_holdout_flag_rate": 0.002084122773777946,
+     "heldout_family_auc": 0.9963526228667215
+    },
+    "crypto": {
+     "val_f1": 0.8301435406698564,
+     "system_recall": 0.7080846446011937,
+     "heldout_family_recall": 0.6744438415626696,
+     "system_synth_fpr": 0.016607677647699427,
+     "system_real_holdout_flag_rate": 0.06157635467980296,
+     "heldout_family_auc": 0.8957542235659935
+    },
+    "network": {
+     "val_f1": 0.9673500379650721,
+     "system_recall": 0.9584964761158966,
+     "heldout_family_recall": 0.9584964761158966,
+     "system_synth_fpr": 0.014830927427328456,
+     "system_real_holdout_flag_rate": 0.07919666540356196,
+     "heldout_family_auc": 0.9825838998455974
+    }
+   }
+  },
+  {
+   "params": {
+    "n_estimators": 90,
+    "max_depth": 4,
+    "learning_rate": 0.12,
+    "min_samples_leaf": 12
+   },
+   "mean_val_f1": 0.5904059525936656,
+   "mean_test_system_recall": 0.5921341752159756,
+   "caps": {
+    "anti_debug": {
+     "val_f1": 0.5727355901189387,
+     "system_recall": 0.6007950028392959,
+     "heldout_family_recall": 0.39068710959682,
+     "system_synth_fpr": 0.02164880822217363,
+     "system_real_holdout_flag_rate": 0.0060629026146267525,
+     "heldout_family_auc": 0.766147074904387
+    },
+    "anti_vm": {
+     "val_f1": 0.742671009771987,
+     "system_recall": 0.4629268292682927,
+     "heldout_family_recall": 0.37853658536585366,
+     "system_synth_fpr": 0.0,
+     "system_real_holdout_flag_rate": 0.007389162561576354,
+     "heldout_family_auc": 0.8272691922297374
+    },
+    "obfuscation": {
+     "val_f1": 0.4540727902946274,
+     "system_recall": 0.24051339285714285,
+     "heldout_family_recall": 0.21372767857142858,
+     "system_synth_fpr": 0.01864933597061317,
+     "system_real_holdout_flag_rate": 0.012694202349374763,
+     "heldout_family_auc": 0.7477059670558672
+    },
+    "packed": {
+     "val_f1": 0.0,
+     "system_recall": 0.5852442671984048,
+     "heldout_family_recall": 0.5473579262213359,
+     "system_synth_fpr": 0.004314387544550741,
+     "system_real_holdout_flag_rate": 0.0018946570670708603,
+     "heldout_family_auc": 0.9959596917370193
+    },
+    "crypto": {
+     "val_f1": 0.8067837674136886,
+     "system_recall": 0.7048290830168205,
+     "heldout_family_recall": 0.6690179055887141,
+     "system_synth_fpr": 0.01987476177511571,
+     "system_real_holdout_flag_rate": 0.06138688897309587,
+     "heldout_family_auc": 0.8966218119671655
+    },
+    "network": {
+     "val_f1": 0.9661725579627518,
+     "system_recall": 0.9584964761158966,
+     "heldout_family_recall": 0.9584964761158966,
+     "system_synth_fpr": 0.014435436029266363,
+     "system_real_holdout_flag_rate": 0.07900719969685487,
+     "heldout_family_auc": 0.985303406475498
+    }
+   }
+  },
+  {
+   "params": {
+    "n_estimators": 90,
+    "max_depth": 5,
+    "learning_rate": 0.05,
+    "min_samples_leaf": 6
+   },
+   "mean_val_f1": 0.5942971655664252,
+   "mean_test_system_recall": 0.5844584448517577,
+   "caps": {
+    "anti_debug": {
+     "val_f1": 0.5466417910447762,
+     "system_recall": 0.5996592844974447,
+     "heldout_family_recall": 0.38216922203293585,
+     "system_synth_fpr": 0.02164880822217363,
+     "system_real_holdout_flag_rate": 0.0060629026146267525,
+     "heldout_family_auc": 0.7675797613650376
+    },
+    "anti_vm": {
+     "val_f1": 0.738562091503268,
+     "system_recall": 0.4712195121951219,
+     "heldout_family_recall": 0.38682926829268294,
+     "system_synth_fpr": 0.00023342670401493932,
+     "system_real_holdout_flag_rate": 0.006252368321333838,
+     "heldout_family_auc": 0.8016933684042723
+    },
+    "obfuscation": {
+     "val_f1": 0.46511627906976744,
+     "system_recall": 0.21930803571428573,
+     "heldout_family_recall": 0.19252232142857142,
+     "system_synth_fpr": 0.015258547612319864,
+     "system_real_holdout_flag_rate": 0.012504736642667677,
+     "heldout_family_auc": 0.7427835370161062
+    },
+    "packed": {
+     "val_f1": 0.0,
+     "system_recall": 0.5483549351944168,
+     "heldout_family_recall": 0.5094715852442672,
+     "system_synth_fpr": 0.004877133746013881,
+     "system_real_holdout_flag_rate": 0.002084122773777946,
+     "heldout_family_auc": 0.9943290556019057
+    },
+    "crypto": {
+     "val_f1": 0.8473777253977608,
+     "system_recall": 0.7097124253933803,
+     "heldout_family_recall": 0.667932718393923,
+     "system_synth_fpr": 0.011707051456575007,
+     "system_real_holdout_flag_rate": 0.06081849185297461,
+     "heldout_family_auc": 0.8912096882723703
+    },
+    "network": {
+     "val_f1": 0.9680851063829787,
+     "system_recall": 0.9584964761158966,
+     "heldout_family_recall": 0.9584964761158966,
+     "system_synth_fpr": 0.014435436029266363,
+     "system_real_holdout_flag_rate": 0.07919666540356196,
+     "heldout_family_auc": 0.9816060109737249
+    }
+   }
+  },
+  {
+   "params": {
+    "n_estimators": 90,
+    "max_depth": 5,
+    "learning_rate": 0.05,
+    "min_samples_leaf": 12
+   },
+   "mean_val_f1": 0.5923559252586087,
+   "mean_test_system_recall": 0.5854866964539286,
+   "caps": {
+    "anti_debug": {
+     "val_f1": 0.5605920444033302,
+     "system_recall": 0.6081771720613288,
+     "heldout_family_recall": 0.39466212379329924,
+     "system_synth_fpr": 0.02164880822217363,
+     "system_real_holdout_flag_rate": 0.0060629026146267525,
+     "heldout_family_auc": 0.7673207291694217
+    },
+    "anti_vm": {
+     "val_f1": 0.7393675027262814,
+     "system_recall": 0.4624390243902439,
+     "heldout_family_recall": 0.3775609756097561,
+     "system_synth_fpr": 0.0,
+     "system_real_holdout_flag_rate": 0.005683971201212581,
+     "heldout_family_auc": 0.7976631709594407
+    },
+    "obfuscation": {
+     "val_f1": 0.488135593220339,
+     "system_recall": 0.24051339285714285,
+     "heldout_family_recall": 0.21261160714285715,
+     "system_synth_fpr": 0.012998022040124329,
+     "system_real_holdout_flag_rate": 0.012694202349374763,
+     "heldout_family_auc": 0.7477488564919469
+    },
+    "packed": {
+     "val_f1": 0.0,
+     "system_recall": 0.5483549351944168,
+     "heldout_family_recall": 0.5104685942173479,
+     "system_synth_fpr": 0.005064715813168261,
+     "system_real_holdout_flag_rate": 0.002084122773777946,
+     "heldout_family_auc": 0.9940592778034306
+    },
+    "crypto": {
+     "val_f1": 0.7990074441687345,
+     "system_recall": 0.6918068366793272,
+     "heldout_family_recall": 0.6353771025501899,
+     "system_synth_fpr": 0.009801252382248844,
+     "system_real_holdout_flag_rate": 0.06025009473285335,
+     "heldout_family_auc": 0.8904968417152694
+    },
+    "network": {
+     "val_f1": 0.967032967032967,
+     "system_recall": 0.961628817541112,
+     "heldout_family_recall": 0.961628817541112,
+     "system_synth_fpr": 0.017006130116669963,
+     "system_real_holdout_flag_rate": 0.07919666540356196,
+     "heldout_family_auc": 0.98522907763013
+    }
+   }
+  },
+  {
+   "params": {
+    "n_estimators": 90,
+    "max_depth": 5,
+    "learning_rate": 0.12,
+    "min_samples_leaf": 6
+   },
+   "mean_val_f1": 0.5979599449736008,
+   "mean_test_system_recall": 0.593311378953509,
+   "caps": {
+    "anti_debug": {
+     "val_f1": 0.5577100646352724,
+     "system_recall": 0.6132879045996593,
+     "heldout_family_recall": 0.3861442362294151,
+     "system_synth_fpr": 0.020992783730592608,
+     "system_real_holdout_flag_rate": 0.0060629026146267525,
+     "heldout_family_auc": 0.7575952250655745
+    },
+    "anti_vm": {
+     "val_f1": 0.742671009771987,
+     "system_recall": 0.4692682926829268,
+     "heldout_family_recall": 0.38439024390243903,
+     "system_synth_fpr": 0.0,
+     "system_real_holdout_flag_rate": 0.005873436907919667,
+     "heldout_family_auc": 0.7674514927922388
+    },
+    "obfuscation": {
+     "val_f1": 0.5284888521882741,
+     "system_recall": 0.27455357142857145,
+     "heldout_family_recall": 0.24888392857142858,
+     "system_synth_fpr": 0.014410850522746538,
+     "system_real_holdout_flag_rate": 0.012694202349374763,
+     "heldout_family_auc": 0.7567695929035645
+    },
+    "packed": {
+     "val_f1": 0.0,
+     "system_recall": 0.5483549351944168,
+     "heldout_family_recall": 0.5094715852442672,
+     "system_synth_fpr": 0.004501969611705121,
+     "system_real_holdout_flag_rate": 0.0022735884804850324,
+     "heldout_family_auc": 0.995807456639648
+    },
+    "crypto": {
+     "val_f1": 0.7915893630179345,
+     "system_recall": 0.6966901790558871,
+     "heldout_family_recall": 0.6608790016277808,
+     "system_synth_fpr": 0.013340593520283148,
+     "system_real_holdout_flag_rate": 0.05949223190602501,
+     "heldout_family_auc": 0.9021823991973219
+    },
+    "network": {
+     "val_f1": 0.9673003802281369,
+     "system_recall": 0.9577133907595928,
+     "heldout_family_recall": 0.9577133907595928,
+     "system_synth_fpr": 0.014039944631204272,
+     "system_real_holdout_flag_rate": 0.07900719969685487,
+     "heldout_family_auc": 0.9865589445551719
+    }
+   }
+  },
+  {
+   "params": {
+    "n_estimators": 90,
+    "max_depth": 5,
+    "learning_rate": 0.12,
+    "min_samples_leaf": 12
+   },
+   "mean_val_f1": 0.6002733298783756,
+   "mean_test_system_recall": 0.5962484252695683,
+   "caps": {
+    "anti_debug": {
+     "val_f1": 0.5735159817351598,
+     "system_recall": 0.6206700738216923,
+     "heldout_family_recall": 0.4043157296990346,
+     "system_synth_fpr": 0.021211458561119615,
+     "system_real_holdout_flag_rate": 0.0060629026146267525,
+     "heldout_family_auc": 0.7611459902225902
+    },
+    "anti_vm": {
+     "val_f1": 0.7432286023835319,
+     "system_recall": 0.46682926829268295,
+     "heldout_family_recall": 0.38682926829268294,
+     "system_synth_fpr": 0.0,
+     "system_real_holdout_flag_rate": 0.007578628268283441,
+     "heldout_family_auc": 0.7637926146068182
+    },
+    "obfuscation": {
+     "val_f1": 0.4893797790994053,
+     "system_recall": 0.2583705357142857,
+     "heldout_family_recall": 0.23158482142857142,
+     "system_synth_fpr": 0.01158519355750212,
+     "system_real_holdout_flag_rate": 0.012694202349374763,
+     "heldout_family_auc": 0.762501639890203
+    },
+    "packed": {
+     "val_f1": 0.0,
+     "system_recall": 0.5682951146560319,
+     "heldout_family_recall": 0.5304087736789631,
+     "system_synth_fpr": 0.004314387544550741,
+     "system_real_holdout_flag_rate": 0.0018946570670708603,
+     "heldout_family_auc": 0.9963464511735849
+    },
+    "crypto": {
+     "val_f1": 0.8297101449275363,
+     "system_recall": 0.7048290830168205,
+     "heldout_family_recall": 0.6690179055887141,
+     "system_synth_fpr": 0.014974135583991287,
+     "system_real_holdout_flag_rate": 0.062144751799924215,
+     "heldout_family_auc": 0.9030404593417466
+    },
+    "network": {
+     "val_f1": 0.96580547112462,
+     "system_recall": 0.9584964761158966,
+     "heldout_family_recall": 0.9584964761158966,
+     "system_synth_fpr": 0.016017401621514733,
+     "system_real_holdout_flag_rate": 0.07900719969685487,
+     "heldout_family_auc": 0.9841802666516357
+    }
+   }
+  },
+  {
+   "params": {
+    "n_estimators": 200,
+    "max_depth": 3,
+    "learning_rate": 0.05,
+    "min_samples_leaf": 6
+   },
+   "mean_val_f1": 0.6049423596201705,
+   "mean_test_system_recall": 0.58340820581193,
+   "caps": {
+    "anti_debug": {
+     "val_f1": 0.6796280642434489,
+     "system_recall": 0.6206700738216923,
+     "heldout_family_recall": 0.44293015332197616,
+     "system_synth_fpr": 0.021430133391646622,
+     "system_real_holdout_flag_rate": 0.0060629026146267525,
+     "heldout_family_auc": 0.7678816344559013
+    },
+    "anti_vm": {
+     "val_f1": 0.7394594594594595,
+     "system_recall": 0.4629268292682927,
+     "heldout_family_recall": 0.38,
+     "system_synth_fpr": 0.00023342670401493932,
+     "system_real_holdout_flag_rate": 0.006252368321333838,
+     "heldout_family_auc": 0.8288713534194166
+    },
+    "obfuscation": {
+     "val_f1": 0.40998217468805703,
+     "system_recall": 0.19866071428571427,
+     "heldout_family_recall": 0.16852678571428573,
+     "system_synth_fpr": 0.01723650748799096,
+     "system_real_holdout_flag_rate": 0.012504736642667677,
+     "heldout_family_auc": 0.7405211192629071
+    },
+    "packed": {
+     "val_f1": 0.0,
+     "system_recall": 0.5483549351944168,
+     "heldout_family_recall": 0.5104685942173479,
+     "system_synth_fpr": 0.004877133746013881,
+     "system_real_holdout_flag_rate": 0.0018946570670708603,
+     "heldout_family_auc": 0.9936200589752034
+    },
+    "crypto": {
+     "val_f1": 0.8332344213649852,
+     "system_recall": 0.711340206185567,
+     "heldout_family_recall": 0.6782419967444384,
+     "system_synth_fpr": 0.014701878573373264,
+     "system_real_holdout_flag_rate": 0.06271314892004547,
+     "heldout_family_auc": 0.8842684640258082
+    },
+    "network": {
+     "val_f1": 0.9673500379650721,
+     "system_recall": 0.9584964761158966,
+     "heldout_family_recall": 0.9584964761158966,
+     "system_synth_fpr": 0.015424164524421594,
+     "system_real_holdout_flag_rate": 0.07919666540356196,
+     "heldout_family_auc": 0.983259130950237
+    }
+   }
+  },
+  {
+   "params": {
+    "n_estimators": 200,
+    "max_depth": 3,
+    "learning_rate": 0.05,
+    "min_samples_leaf": 12
+   },
+   "mean_val_f1": 0.5952008568001181,
+   "mean_test_system_recall": 0.5778097703225388,
+   "caps": {
+    "anti_debug": {
+     "val_f1": 0.6884970612930311,
+     "system_recall": 0.6183986371379898,
+     "heldout_family_recall": 0.44236229415105055,
+     "system_synth_fpr": 0.021211458561119615,
+     "system_real_holdout_flag_rate": 0.0060629026146267525,
+     "heldout_family_auc": 0.7689659437234551
+    },
+    "anti_vm": {
+     "val_f1": 0.738562091503268,
+     "system_recall": 0.4585365853658537,
+     "heldout_family_recall": 0.3746341463414634,
+     "system_synth_fpr": 0.0,
+     "system_real_holdout_flag_rate": 0.006252368321333838,
+     "heldout_family_auc": 0.8264747443692924
+    },
+    "obfuscation": {
+     "val_f1": 0.4281938325991189,
+     "system_recall": 0.20591517857142858,
+     "heldout_family_recall": 0.17689732142857142,
+     "system_synth_fpr": 0.021474992935857588,
+     "system_real_holdout_flag_rate": 0.012504736642667677,
+     "heldout_family_auc": 0.7368353871906914
+    },
+    "packed": {
+     "val_f1": 0.0,
+     "system_recall": 0.5483549351944168,
+     "heldout_family_recall": 0.5104685942173479,
+     "system_synth_fpr": 0.005064715813168261,
+     "system_real_holdout_flag_rate": 0.0018946570670708603,
+     "heldout_family_auc": 0.9931603613470225
+    },
+    "crypto": {
+     "val_f1": 0.7490445859872611,
+     "system_recall": 0.6771568095496473,
+     "heldout_family_recall": 0.6326641345632121,
+     "system_synth_fpr": 0.013885107541519195,
+     "system_real_holdout_flag_rate": 0.06157635467980296,
+     "heldout_family_auc": 0.8844724721276332
+    },
+    "network": {
+     "val_f1": 0.9669075694180297,
+     "system_recall": 0.9584964761158966,
+     "heldout_family_recall": 0.9584964761158966,
+     "system_synth_fpr": 0.013842198932173226,
+     "system_real_holdout_flag_rate": 0.07919666540356196,
+     "heldout_family_auc": 0.9828094414357607
+    }
+   }
+  },
+  {
+   "params": {
+    "n_estimators": 200,
+    "max_depth": 3,
+    "learning_rate": 0.12,
+    "min_samples_leaf": 6
+   },
+   "mean_val_f1": 0.61458222143914,
+   "mean_test_system_recall": 0.595360860942273,
+   "caps": {
+    "anti_debug": {
+     "val_f1": 0.7026578073089701,
+     "system_recall": 0.6394094264622374,
+     "heldout_family_recall": 0.4565587734241908,
+     "system_synth_fpr": 0.022304832713754646,
+     "system_real_holdout_flag_rate": 0.006441834028040924,
+     "heldout_family_auc": 0.7579015064224711
+    },
+    "anti_vm": {
+     "val_f1": 0.7432286023835319,
+     "system_recall": 0.46682926829268295,
+     "heldout_family_recall": 0.38439024390243903,
+     "system_synth_fpr": 0.0,
+     "system_real_holdout_flag_rate": 0.007768093974990527,
+     "heldout_family_auc": 0.8266746942679511
+    },
+    "obfuscation": {
+     "val_f1": 0.4983164983164983,
+     "system_recall": 0.2661830357142857,
+     "heldout_family_recall": 0.23828125,
+     "system_synth_fpr": 0.018084204577564284,
+     "system_real_holdout_flag_rate": 0.013830996589617279,
+     "heldout_family_auc": 0.7467221117749163
+    },
+    "packed": {
+     "val_f1": 0.0,
+     "system_recall": 0.5483549351944168,
+     "heldout_family_recall": 0.5094715852442672,
+     "system_synth_fpr": 0.004126805477396361,
+     "system_real_holdout_flag_rate": 0.0018946570670708603,
+     "heldout_family_auc": 0.9940794760718781
+    },
+    "crypto": {
+     "val_f1": 0.7763074984247007,
+     "system_recall": 0.6928920238741183,
+     "heldout_family_recall": 0.6614215952251763,
+     "system_synth_fpr": 0.013885107541519195,
+     "system_real_holdout_flag_rate": 0.058734369079196665,
+     "heldout_family_auc": 0.8985903941285848
+    },
+    "network": {
+     "val_f1": 0.9669829222011386,
+     "system_recall": 0.9584964761158966,
+     "heldout_family_recall": 0.9584964761158966,
+     "system_synth_fpr": 0.017203875815701007,
+     "system_real_holdout_flag_rate": 0.07919666540356196,
+     "heldout_family_auc": 0.985559376436734
+    }
+   }
+  },
+  {
+   "params": {
+    "n_estimators": 200,
+    "max_depth": 3,
+    "learning_rate": 0.12,
+    "min_samples_leaf": 12
+   },
+   "mean_val_f1": 0.6026304084539009,
+   "mean_test_system_recall": 0.5876492573625589,
+   "caps": {
+    "anti_debug": {
+     "val_f1": 0.6890756302521008,
+     "system_recall": 0.6360022714366838,
+     "heldout_family_recall": 0.45258375922771155,
+     "system_synth_fpr": 0.021211458561119615,
+     "system_real_holdout_flag_rate": 0.006441834028040924,
+     "heldout_family_auc": 0.7624007938355801
+    },
+    "anti_vm": {
+     "val_f1": 0.7432286023835319,
+     "system_recall": 0.4678048780487805,
+     "heldout_family_recall": 0.3878048780487805,
+     "system_synth_fpr": 0.0,
+     "system_real_holdout_flag_rate": 0.007578628268283441,
+     "heldout_family_auc": 0.8291802168021681
+    },
+    "obfuscation": {
+     "val_f1": 0.4983164983164983,
+     "system_recall": 0.25167410714285715,
+     "heldout_family_recall": 0.22433035714285715,
+     "system_synth_fpr": 0.01723650748799096,
+     "system_real_holdout_flag_rate": 0.013830996589617279,
+     "heldout_family_auc": 0.745329230033706
+    },
+    "packed": {
+     "val_f1": 0.0,
+     "system_recall": 0.5473579262213359,
+     "heldout_family_recall": 0.5084745762711864,
+     "system_synth_fpr": 0.004126805477396361,
+     "system_real_holdout_flag_rate": 0.0018946570670708603,
+     "heldout_family_auc": 0.9934735280184581
+    },
+    "crypto": {
+     "val_f1": 0.7216358839050132,
+     "system_recall": 0.6684753119913185,
+     "heldout_family_recall": 0.6321215409658166,
+     "system_synth_fpr": 0.013340593520283148,
+     "system_real_holdout_flag_rate": 0.05892383478590375,
+     "heldout_family_auc": 0.8917592988030294
+    },
+    "network": {
+     "val_f1": 0.9635258358662614,
+     "system_recall": 0.9545810493343775,
+     "heldout_family_recall": 0.9545810493343775,
+     "system_synth_fpr": 0.017203875815701007,
+     "system_real_holdout_flag_rate": 0.07900719969685487,
+     "heldout_family_auc": 0.9847489597445813
+    }
+   }
+  },
+  {
+   "params": {
+    "n_estimators": 200,
+    "max_depth": 4,
+    "learning_rate": 0.05,
+    "min_samples_leaf": 6
+   },
+   "mean_val_f1": 0.6065269888021755,
+   "mean_test_system_recall": 0.5945214846329677,
+   "caps": {
+    "anti_debug": {
+     "val_f1": 0.5902527075812274,
+     "system_recall": 0.6201022146507666,
+     "heldout_family_recall": 0.4134014764338444,
+     "system_synth_fpr": 0.021430133391646622,
+     "system_real_holdout_flag_rate": 0.0060629026146267525,
+     "heldout_family_auc": 0.7653067724749856
+    },
+    "anti_vm": {
+     "val_f1": 0.742671009771987,
+     "system_recall": 0.46731707317073173,
+     "heldout_family_recall": 0.3853658536585366,
+     "system_synth_fpr": 0.0,
+     "system_real_holdout_flag_rate": 0.007389162561576354,
+     "heldout_family_auc": 0.8385206440299696
+    },
+    "obfuscation": {
+     "val_f1": 0.48211243611584326,
+     "system_recall": 0.2544642857142857,
+     "heldout_family_recall": 0.22879464285714285,
+     "system_synth_fpr": 0.021192427239333143,
+     "system_real_holdout_flag_rate": 0.012694202349374763,
+     "heldout_family_auc": 0.7526308411627578
+    },
+    "packed": {
+     "val_f1": 0.0,
+     "system_recall": 0.5483549351944168,
+     "heldout_family_recall": 0.5104685942173479,
+     "system_synth_fpr": 0.004314387544550741,
+     "system_real_holdout_flag_rate": 0.0018946570670708603,
+     "heldout_family_auc": 0.995798479631449
+    },
+    "crypto": {
+     "val_f1": 0.8571428571428571,
+     "system_recall": 0.7183939229517091,
+     "heldout_family_recall": 0.6885512750949538,
+     "system_synth_fpr": 0.01769670569017152,
+     "system_real_holdout_flag_rate": 0.06347101174687382,
+     "heldout_family_auc": 0.8988841451137254
+    },
+    "network": {
+     "val_f1": 0.9669829222011386,
+     "system_recall": 0.9584964761158966,
+     "heldout_family_recall": 0.9584964761158966,
+     "system_synth_fpr": 0.016808384417638916,
+     "system_real_holdout_flag_rate": 0.07919666540356196,
+     "heldout_family_auc": 0.983877221755
+    }
+   }
+  },
+  {
+   "params": {
+    "n_estimators": 200,
+    "max_depth": 4,
+    "learning_rate": 0.05,
+    "min_samples_leaf": 12
+   },
+   "mean_val_f1": 0.5981845002219693,
+   "mean_test_system_recall": 0.5899442306493635,
+   "caps": {
+    "anti_debug": {
+     "val_f1": 0.562152133580705,
+     "system_recall": 0.6081771720613288,
+     "heldout_family_recall": 0.39522998296422485,
+     "system_synth_fpr": 0.020555434069538595,
+     "system_real_holdout_flag_rate": 0.0060629026146267525,
+     "heldout_family_auc": 0.7665472337013056
+    },
+    "anti_vm": {
+     "val_f1": 0.742671009771987,
+     "system_recall": 0.46487804878048783,
+     "heldout_family_recall": 0.3804878048780488,
+     "system_synth_fpr": 0.0,
+     "system_real_holdout_flag_rate": 0.007389162561576354,
+     "heldout_family_auc": 0.8277137847008721
+    },
+    "obfuscation": {
+     "val_f1": 0.4906937394247039,
+     "system_recall": 0.25167410714285715,
+     "heldout_family_recall": 0.22488839285714285,
+     "system_synth_fpr": 0.016671376094942073,
+     "system_real_holdout_flag_rate": 0.012504736642667677,
+     "heldout_family_auc": 0.7495790685675938
+    },
+    "packed": {
+     "val_f1": 0.0,
+     "system_recall": 0.5483549351944168,
+     "heldout_family_recall": 0.5104685942173479,
+     "system_synth_fpr": 0.004314387544550741,
+     "system_real_holdout_flag_rate": 0.0018946570670708603,
+     "heldout_family_auc": 0.9961903821456284
+    },
+    "crypto": {
+     "val_f1": 0.8266825491363907,
+     "system_recall": 0.7080846446011937,
+     "heldout_family_recall": 0.6771568095496473,
+     "system_synth_fpr": 0.016879934658317452,
+     "system_real_holdout_flag_rate": 0.06195528609321713,
+     "heldout_family_auc": 0.8994108582832091
+    },
+    "network": {
+     "val_f1": 0.9669075694180297,
+     "system_recall": 0.9584964761158966,
+     "heldout_family_recall": 0.9584964761158966,
+     "system_synth_fpr": 0.01364445323314218,
+     "system_real_holdout_flag_rate": 0.07900719969685487,
+     "heldout_family_auc": 0.9835487811695303
+    }
+   }
+  },
+  {
+   "params": {
+    "n_estimators": 200,
+    "max_depth": 4,
+    "learning_rate": 0.12,
+    "min_samples_leaf": 6
+   },
+   "mean_val_f1": 0.5896778311878053,
+   "mean_test_system_recall": 0.5946584760346506,
+   "caps": {
+    "anti_debug": {
+     "val_f1": 0.5956709956709957,
+     "system_recall": 0.6382737081203862,
+     "heldout_family_recall": 0.43270868824531517,
+     "system_synth_fpr": 0.03586267220642904,
+     "system_real_holdout_flag_rate": 0.006441834028040924,
+     "heldout_family_auc": 0.7478997095884008
+    },
+    "anti_vm": {
+     "val_f1": 0.7440347071583514,
+     "system_recall": 0.47024390243902436,
+     "heldout_family_recall": 0.3873170731707317,
+     "system_synth_fpr": 0.0,
+     "system_real_holdout_flag_rate": 0.006252368321333838,
+     "heldout_family_auc": 0.7738437976816743
+    },
+    "obfuscation": {
+     "val_f1": 0.5108514190317195,
+     "system_recall": 0.27957589285714285,
+     "heldout_family_recall": 0.25279017857142855,
+     "system_synth_fpr": 0.014975981915795423,
+     "system_real_holdout_flag_rate": 0.012883668056081848,
+     "heldout_family_auc": 0.7568250180387923
+    },
+    "packed": {
+     "val_f1": 0.0,
+     "system_recall": 0.5523429710867398,
+     "heldout_family_recall": 0.514456630109671,
+     "system_synth_fpr": 0.004126805477396361,
+     "system_real_holdout_flag_rate": 0.0018946570670708603,
+     "heldout_family_auc": 0.9969177068307364
+    },
+    "crypto": {
+     "val_f1": 0.7217043941411452,
+     "system_recall": 0.6690179055887141,
+     "heldout_family_recall": 0.6239826370048833,
+     "system_synth_fpr": 0.010345766403484889,
+     "system_real_holdout_flag_rate": 0.05702917771883289,
+     "heldout_family_auc": 0.8984847708173573
+    },
+    "network": {
+     "val_f1": 0.96580547112462,
+     "system_recall": 0.9584964761158966,
+     "heldout_family_recall": 0.9584964761158966,
+     "system_synth_fpr": 0.016215147320545777,
+     "system_real_holdout_flag_rate": 0.07919666540356196,
+     "heldout_family_auc": 0.9881000292824681
+    }
+   }
+  },
+  {
+   "params": {
+    "n_estimators": 200,
+    "max_depth": 4,
+    "learning_rate": 0.12,
+    "min_samples_leaf": 12
+   },
+   "mean_val_f1": 0.5854550749109225,
+   "mean_test_system_recall": 0.5904987631281559,
+   "caps": {
+    "anti_debug": {
+     "val_f1": 0.5909878682842288,
+     "system_recall": 0.629755820556502,
+     "heldout_family_recall": 0.42248722316865417,
+     "system_synth_fpr": 0.03630002186748305,
+     "system_real_holdout_flag_rate": 0.006441834028040924,
+     "heldout_family_auc": 0.7531090382740558
+    },
+    "anti_vm": {
+     "val_f1": 0.7440347071583514,
+     "system_recall": 0.4682926829268293,
+     "heldout_family_recall": 0.3848780487804878,
+     "system_synth_fpr": 0.0,
+     "system_real_holdout_flag_rate": 0.007578628268283441,
+     "heldout_family_auc": 0.8019779781831432
+    },
+    "obfuscation": {
+     "val_f1": 0.5046102263202011,
+     "system_recall": 0.26674107142857145,
+     "heldout_family_recall": 0.24051339285714285,
+     "system_synth_fpr": 0.016388810398417632,
+     "system_real_holdout_flag_rate": 0.012694202349374763,
+     "heldout_family_auc": 0.753981148831389
+    },
+    "packed": {
+     "val_f1": 0.0,
+     "system_recall": 0.5533399800598205,
+     "heldout_family_recall": 0.5154536390827518,
+     "system_synth_fpr": 0.004314387544550741,
+     "system_real_holdout_flag_rate": 0.0018946570670708603,
+     "heldout_family_auc": 0.9959708194867658
+    },
+    "crypto": {
+     "val_f1": 0.7084723148765844,
+     "system_recall": 0.667932718393923,
+     "heldout_family_recall": 0.6212696690179056,
+     "system_synth_fpr": 0.01197930846719303,
+     "system_real_holdout_flag_rate": 0.057787040545661236,
+     "heldout_family_auc": 0.8999100207568271
+    },
+    "network": {
+     "val_f1": 0.9646253328261697,
+     "system_recall": 0.9569303054032889,
+     "heldout_family_recall": 0.9569303054032889,
+     "system_synth_fpr": 0.016412893019576824,
+     "system_real_holdout_flag_rate": 0.07900719969685487,
+     "heldout_family_auc": 0.986323260174651
+    }
+   }
+  },
+  {
+   "params": {
+    "n_estimators": 200,
+    "max_depth": 5,
+    "learning_rate": 0.05,
+    "min_samples_leaf": 6
+   },
+   "mean_val_f1": 0.6028715645829643,
+   "mean_test_system_recall": 0.5899207825232357,
+   "caps": {
+    "anti_debug": {
+     "val_f1": 0.5812897366030881,
+     "system_recall": 0.6132879045996593,
+     "heldout_family_recall": 0.39636570130607607,
+     "system_synth_fpr": 0.021211458561119615,
+     "system_real_holdout_flag_rate": 0.0060629026146267525,
+     "heldout_family_auc": 0.7603466660408171
+    },
+    "anti_vm": {
+     "val_f1": 0.742671009771987,
+     "system_recall": 0.4682926829268293,
+     "heldout_family_recall": 0.38439024390243903,
+     "system_synth_fpr": 0.0,
+     "system_real_holdout_flag_rate": 0.007010231148162183,
+     "heldout_family_auc": 0.8254367926032202
+    },
+    "obfuscation": {
+     "val_f1": 0.5100334448160535,
+     "system_recall": 0.25223214285714285,
+     "heldout_family_recall": 0.22600446428571427,
+     "system_synth_fpr": 0.014128284826222097,
+     "system_real_holdout_flag_rate": 0.012694202349374763,
+     "heldout_family_auc": 0.7582441537914261
+    },
+    "packed": {
+     "val_f1": 0.0,
+     "system_recall": 0.5483549351944168,
+     "heldout_family_recall": 0.5094715852442672,
+     "system_synth_fpr": 0.004126805477396361,
+     "system_real_holdout_flag_rate": 0.0018946570670708603,
+     "heldout_family_auc": 0.9958382215948292
+    },
+    "crypto": {
+     "val_f1": 0.8162522741055185,
+     "system_recall": 0.6988605534454694,
+     "heldout_family_recall": 0.6646771568095496,
+     "system_synth_fpr": 0.012523822488429077,
+     "system_real_holdout_flag_rate": 0.06043956043956044,
+     "heldout_family_auc": 0.9004633244102562
+    },
+    "network": {
+     "val_f1": 0.9669829222011386,
+     "system_recall": 0.9584964761158966,
+     "heldout_family_recall": 0.9584964761158966,
+     "system_synth_fpr": 0.01661063871860787,
+     "system_real_holdout_flag_rate": 0.07919666540356196,
+     "heldout_family_auc": 0.9865308389605173
+    }
+   }
+  },
+  {
+   "params": {
+    "n_estimators": 200,
+    "max_depth": 5,
+    "learning_rate": 0.05,
+    "min_samples_leaf": 12
+   },
+   "mean_val_f1": 0.5946739589178877,
+   "mean_test_system_recall": 0.5909801611239579,
+   "caps": {
+    "anti_debug": {
+     "val_f1": 0.5360824742268041,
+     "system_recall": 0.599091425326519,
+     "heldout_family_recall": 0.3787620670073822,
+     "system_synth_fpr": 0.020992783730592608,
+     "system_real_holdout_flag_rate": 0.0060629026146267525,
+     "heldout_family_auc": 0.7603683969297109
+    },
+    "anti_vm": {
+     "val_f1": 0.742671009771987,
+     "system_recall": 0.4682926829268293,
+     "heldout_family_recall": 0.3873170731707317,
+     "system_synth_fpr": 0.0,
+     "system_real_holdout_flag_rate": 0.006820765441455097,
+     "heldout_family_auc": 0.828882341554508
+    },
+    "obfuscation": {
+     "val_f1": 0.5187032418952618,
+     "system_recall": 0.2689732142857143,
+     "heldout_family_recall": 0.24274553571428573,
+     "system_synth_fpr": 0.015541113308844307,
+     "system_real_holdout_flag_rate": 0.012694202349374763,
+     "heldout_family_auc": 0.759575460809147
+    },
+    "packed": {
+     "val_f1": 0.0,
+     "system_recall": 0.5543369890329013,
+     "heldout_family_recall": 0.5164506480558325,
+     "system_synth_fpr": 0.004314387544550741,
+     "system_real_holdout_flag_rate": 0.0018946570670708603,
+     "heldout_family_auc": 0.9964184542601795
+    },
+    "crypto": {
+     "val_f1": 0.8044144696505211,
+     "system_recall": 0.6966901790558871,
+     "heldout_family_recall": 0.6597938144329897,
+     "system_synth_fpr": 0.013612850530901171,
+     "system_real_holdout_flag_rate": 0.06157635467980296,
+     "heldout_family_auc": 0.8994630051767241
+    },
+    "network": {
+     "val_f1": 0.9661725579627518,
+     "system_recall": 0.9584964761158966,
+     "heldout_family_recall": 0.9584964761158966,
+     "system_synth_fpr": 0.014237690330235317,
+     "system_real_holdout_flag_rate": 0.07900719969685487,
+     "heldout_family_auc": 0.9865049787163996
+    }
+   }
+  },
+  {
+   "params": {
+    "n_estimators": 200,
+    "max_depth": 5,
+    "learning_rate": 0.12,
+    "min_samples_leaf": 6
+   },
+   "mean_val_f1": 0.5896705838887236,
+   "mean_test_system_recall": 0.5954437118438565,
+   "caps": {
+    "anti_debug": {
+     "val_f1": 0.5949696444058976,
+     "system_recall": 0.6484951731970471,
+     "heldout_family_recall": 0.44690516751845544,
+     "system_synth_fpr": 0.03717472118959108,
+     "system_real_holdout_flag_rate": 0.006441834028040924,
+     "heldout_family_auc": 0.7444780879996692
+    },
+    "anti_vm": {
+     "val_f1": 0.7432286023835319,
+     "system_recall": 0.47317073170731705,
+     "heldout_family_recall": 0.3897560975609756,
+     "system_synth_fpr": 0.0,
+     "system_real_holdout_flag_rate": 0.006631299734748011,
+     "heldout_family_auc": 0.7907224271822549
+    },
+    "obfuscation": {
+     "val_f1": 0.528052805280528,
+     "system_recall": 0.27566964285714285,
+     "heldout_family_recall": 0.25,
+     "system_synth_fpr": 0.013280587736648771,
+     "system_real_holdout_flag_rate": 0.012504736642667677,
+     "heldout_family_auc": 0.7653350232612118
+    },
+    "packed": {
+     "val_f1": 0.0,
+     "system_recall": 0.5483549351944168,
+     "heldout_family_recall": 0.5094715852442672,
+     "system_synth_fpr": 0.004126805477396361,
+     "system_real_holdout_flag_rate": 0.0018946570670708603,
+     "heldout_family_auc": 0.9968681462646388
+    },
+    "crypto": {
+     "val_f1": 0.7087248322147651,
+     "system_recall": 0.6684753119913185,
+     "heldout_family_recall": 0.6201844818231145,
+     "system_synth_fpr": 0.010073509392866867,
+     "system_real_holdout_flag_rate": 0.055323986358469114,
+     "heldout_family_auc": 0.9024553209700386
+    },
+    "network": {
+     "val_f1": 0.963047619047619,
+     "system_recall": 0.9584964761158966,
+     "heldout_family_recall": 0.9553641346906813,
+     "system_synth_fpr": 0.016412893019576824,
+     "system_real_holdout_flag_rate": 0.07919666540356196,
+     "heldout_family_auc": 0.9871471489700268
+    }
+   }
+  },
+  {
+   "params": {
+    "n_estimators": 200,
+    "max_depth": 5,
+    "learning_rate": 0.12,
+    "min_samples_leaf": 12
+   },
+   "mean_val_f1": 0.5868035774875711,
+   "mean_test_system_recall": 0.5917571673123516,
+   "caps": {
+    "anti_debug": {
+     "val_f1": 0.5993091537132987,
+     "system_recall": 0.6411130039750143,
+     "heldout_family_recall": 0.4406587166382737,
+     "system_synth_fpr": 0.036518696698010056,
+     "system_real_holdout_flag_rate": 0.006441834028040924,
+     "heldout_family_auc": 0.745074011061395
+    },
+    "anti_vm": {
+     "val_f1": 0.7440347071583514,
+     "system_recall": 0.4697560975609756,
+     "heldout_family_recall": 0.3873170731707317,
+     "system_synth_fpr": 0.0,
+     "system_real_holdout_flag_rate": 0.006441834028040924,
+     "heldout_family_auc": 0.7773256701054405
+    },
+    "obfuscation": {
+     "val_f1": 0.509212730318258,
+     "system_recall": 0.27622767857142855,
+     "heldout_family_recall": 0.25,
+     "system_synth_fpr": 0.013280587736648771,
+     "system_real_holdout_flag_rate": 0.012694202349374763,
+     "heldout_family_auc": 0.7651426515258547
+    },
+    "packed": {
+     "val_f1": 0.0,
+     "system_recall": 0.5443668993020937,
+     "heldout_family_recall": 0.5054835493519442,
+     "system_synth_fpr": 0.004126805477396361,
+     "system_real_holdout_flag_rate": 0.0018946570670708603,
+     "heldout_family_auc": 0.9966919724787371
+    },
+    "crypto": {
+     "val_f1": 0.706989247311828,
+     "system_recall": 0.6668475311991319,
+     "heldout_family_recall": 0.6153011394465545,
+     "system_synth_fpr": 0.01197930846719303,
+     "system_real_holdout_flag_rate": 0.05892383478590375,
+     "heldout_family_auc": 0.902329533208486
+    },
+    "network": {
+     "val_f1": 0.9612756264236902,
+     "system_recall": 0.9522317932654659,
+     "heldout_family_recall": 0.9522317932654659,
+     "system_synth_fpr": 0.019972315602135655,
+     "system_real_holdout_flag_rate": 0.07900719969685487,
+     "heldout_family_auc": 0.9842223863306776
+    }
+   }
+  },
+  {
+   "params": {
+    "n_estimators": 400,
+    "max_depth": 3,
+    "learning_rate": 0.05,
+    "min_samples_leaf": 6
+   },
+   "mean_val_f1": 0.6103329112271764,
+   "mean_test_system_recall": 0.594639007534705,
+   "caps": {
+    "anti_debug": {
+     "val_f1": 0.7048092868988391,
+     "system_recall": 0.653038046564452,
+     "heldout_family_recall": 0.47189097103918226,
+     "system_synth_fpr": 0.021867483052700636,
+     "system_real_holdout_flag_rate": 0.006441834028040924,
+     "heldout_family_auc": 0.7621430034050442
+    },
+    "anti_vm": {
+     "val_f1": 0.7432286023835319,
+     "system_recall": 0.4682926829268293,
+     "heldout_family_recall": 0.38634146341463416,
+     "system_synth_fpr": 0.0,
+     "system_real_holdout_flag_rate": 0.007389162561576354,
+     "heldout_family_auc": 0.8253926692628272
+    },
+    "obfuscation": {
+     "val_f1": 0.4739093242087254,
+     "system_recall": 0.2505580357142857,
+     "heldout_family_recall": 0.22265625,
+     "system_synth_fpr": 0.014410850522746538,
+     "system_real_holdout_flag_rate": 0.013452065176203107,
+     "heldout_family_auc": 0.7488690276460259
+    },
+    "packed": {
+     "val_f1": 0.0,
+     "system_recall": 0.5483549351944168,
+     "heldout_family_recall": 0.5094715852442672,
+     "system_synth_fpr": 0.004501969611705121,
+     "system_real_holdout_flag_rate": 0.0018946570670708603,
+     "heldout_family_auc": 0.9938081085948682
+    },
+    "crypto": {
+     "val_f1": 0.773067331670823,
+     "system_recall": 0.6890938686923495,
+     "heldout_family_recall": 0.6608790016277808,
+     "system_synth_fpr": 0.01905799074326164,
+     "system_real_holdout_flag_rate": 0.05892383478590375,
+     "heldout_family_auc": 0.8958013478125412
+    },
+    "network": {
+     "val_f1": 0.9669829222011386,
+     "system_recall": 0.9584964761158966,
+     "heldout_family_recall": 0.9584964761158966,
+     "system_synth_fpr": 0.017401621514732055,
+     "system_real_holdout_flag_rate": 0.07900719969685487,
+     "heldout_family_auc": 0.985069812593753
+    }
+   }
+  },
+  {
+   "params": {
+    "n_estimators": 400,
+    "max_depth": 3,
+    "learning_rate": 0.05,
+    "min_samples_leaf": 12
+   },
+   "mean_val_f1": 0.6090736361047208,
+   "mean_test_system_recall": 0.5904794284942148,
+   "caps": {
+    "anti_debug": {
+     "val_f1": 0.7175697865353038,
+     "system_recall": 0.6473594548551959,
+     "heldout_family_recall": 0.4684838160136286,
+     "system_synth_fpr": 0.021867483052700636,
+     "system_real_holdout_flag_rate": 0.006441834028040924,
+     "heldout_family_auc": 0.7651919712933716
+    },
+    "anti_vm": {
+     "val_f1": 0.742671009771987,
+     "system_recall": 0.4634146341463415,
+     "heldout_family_recall": 0.38,
+     "system_synth_fpr": 0.0,
+     "system_real_holdout_flag_rate": 0.007578628268283441,
+     "heldout_family_auc": 0.8227271640363462
+    },
+    "obfuscation": {
+     "val_f1": 0.4739093242087254,
+     "system_recall": 0.23995535714285715,
+     "heldout_family_recall": 0.21316964285714285,
+     "system_synth_fpr": 0.015258547612319864,
+     "system_real_holdout_flag_rate": 0.013641530882910194,
+     "heldout_family_auc": 0.7456402572861582
+    },
+    "packed": {
+     "val_f1": 0.0,
+     "system_recall": 0.5483549351944168,
+     "heldout_family_recall": 0.5094715852442672,
+     "system_synth_fpr": 0.004501969611705121,
+     "system_real_holdout_flag_rate": 0.0018946570670708603,
+     "heldout_family_auc": 0.994647084819449
+    },
+    "crypto": {
+     "val_f1": 0.7541191381495564,
+     "system_recall": 0.6852957135105806,
+     "heldout_family_recall": 0.6549104720564297,
+     "system_synth_fpr": 0.018513476722025593,
+     "system_real_holdout_flag_rate": 0.06006062902614627,
+     "heldout_family_auc": 0.8937890390775228
+    },
+    "network": {
+     "val_f1": 0.9661725579627518,
+     "system_recall": 0.9584964761158966,
+     "heldout_family_recall": 0.9584964761158966,
+     "system_synth_fpr": 0.014237690330235317,
+     "system_real_holdout_flag_rate": 0.07900719969685487,
+     "heldout_family_auc": 0.9846469898598421
+    }
+   }
+  },
+  {
+   "params": {
+    "n_estimators": 400,
+    "max_depth": 3,
+    "learning_rate": 0.12,
+    "min_samples_leaf": 6
+   },
+   "mean_val_f1": 0.5995169813070477,
+   "mean_test_system_recall": 0.5922499521280037,
+   "caps": {
+    "anti_debug": {
+     "val_f1": 0.6528583264291632,
+     "system_recall": 0.6365701306076094,
+     "heldout_family_recall": 0.4463373083475298,
+     "system_synth_fpr": 0.035643997375902035,
+     "system_real_holdout_flag_rate": 0.006441834028040924,
+     "heldout_family_auc": 0.7492509983480798
+    },
+    "anti_vm": {
+     "val_f1": 0.7440347071583514,
+     "system_recall": 0.46634146341463417,
+     "heldout_family_recall": 0.3853658536585366,
+     "system_synth_fpr": 0.0,
+     "system_real_holdout_flag_rate": 0.006252368321333838,
+     "heldout_family_auc": 0.7994957413859852
+    },
+    "obfuscation": {
+     "val_f1": 0.5062866722548198,
+     "system_recall": 0.27511160714285715,
+     "heldout_family_recall": 0.24720982142857142,
+     "system_synth_fpr": 0.015258547612319864,
+     "system_real_holdout_flag_rate": 0.013830996589617279,
+     "heldout_family_auc": 0.750229584628426
+    },
+    "packed": {
+     "val_f1": 0.0,
+     "system_recall": 0.5473579262213359,
+     "heldout_family_recall": 0.5084745762711864,
+     "system_synth_fpr": 0.004126805477396361,
+     "system_real_holdout_flag_rate": 0.0018946570670708603,
+     "heldout_family_auc": 0.9889792262679229
+    },
+    "crypto": {
+     "val_f1": 0.7281167108753316,
+     "system_recall": 0.6711882799782962,
+     "heldout_family_recall": 0.6212696690179056,
+     "system_synth_fpr": 0.011707051456575007,
+     "system_real_holdout_flag_rate": 0.05683971201212581,
+     "heldout_family_auc": 0.9008058984784186
+    },
+    "network": {
+     "val_f1": 0.96580547112462,
+     "system_recall": 0.9569303054032889,
+     "heldout_family_recall": 0.9569303054032889,
+     "system_synth_fpr": 0.017203875815701007,
+     "system_real_holdout_flag_rate": 0.07919666540356196,
+     "heldout_family_auc": 0.9807328018924123
+    }
+   }
+  },
+  {
+   "params": {
+    "n_estimators": 400,
+    "max_depth": 3,
+    "learning_rate": 0.12,
+    "min_samples_leaf": 12
+   },
+   "mean_val_f1": 0.5972277109494513,
+   "mean_test_system_recall": 0.5915478392799693,
+   "caps": {
+    "anti_debug": {
+     "val_f1": 0.6556836902800659,
+     "system_recall": 0.6450880181714934,
+     "heldout_family_recall": 0.4593980692788189,
+     "system_synth_fpr": 0.03630002186748305,
+     "system_real_holdout_flag_rate": 0.006441834028040924,
+     "heldout_family_auc": 0.7534874661820803
+    },
+    "anti_vm": {
+     "val_f1": 0.7440347071583514,
+     "system_recall": 0.4678048780487805,
+     "heldout_family_recall": 0.38682926829268294,
+     "system_synth_fpr": 0.0,
+     "system_real_holdout_flag_rate": 0.006252368321333838,
+     "heldout_family_auc": 0.7934713966887567
+    },
+    "obfuscation": {
+     "val_f1": 0.5249169435215947,
+     "system_recall": 0.2739955357142857,
+     "heldout_family_recall": 0.24720982142857142,
+     "system_synth_fpr": 0.016671376094942073,
+     "system_real_holdout_flag_rate": 0.014020462296324365,
+     "heldout_family_auc": 0.7456081690499738
+    },
+    "packed": {
+     "val_f1": 0.0,
+     "system_recall": 0.5473579262213359,
+     "heldout_family_recall": 0.5084745762711864,
+     "system_synth_fpr": 0.004126805477396361,
+     "system_real_holdout_flag_rate": 0.0018946570670708603,
+     "heldout_family_auc": 0.9954226609236257
+    },
+    "crypto": {
+     "val_f1": 0.6964164976335362,
+     "system_recall": 0.6635919696147585,
+     "heldout_family_recall": 0.6109603906673902,
+     "system_synth_fpr": 0.011707051456575007,
+     "system_real_holdout_flag_rate": 0.057408109132247066,
+     "heldout_family_auc": 0.894687797434875
+    },
+    "network": {
+     "val_f1": 0.9623144271031595,
+     "system_recall": 0.9514487079091621,
+     "heldout_family_recall": 0.9514487079091621,
+     "system_synth_fpr": 0.016808384417638916,
+     "system_real_holdout_flag_rate": 0.07900719969685487,
+     "heldout_family_auc": 0.9803308067203808
+    }
+   }
+  },
+  {
+   "params": {
+    "n_estimators": 400,
+    "max_depth": 4,
+    "learning_rate": 0.05,
+    "min_samples_leaf": 6
+   },
+   "mean_val_f1": 0.5947704268871464,
+   "mean_test_system_recall": 0.5946081789098864,
+   "caps": {
+    "anti_debug": {
+     "val_f1": 0.5824561403508772,
+     "system_recall": 0.6303236797274276,
+     "heldout_family_recall": 0.4196479273140261,
+     "system_synth_fpr": 0.03520664771484802,
+     "system_real_holdout_flag_rate": 0.0060629026146267525,
+     "heldout_family_auc": 0.7485096645955267
+    },
+    "anti_vm": {
+     "val_f1": 0.7440347071583514,
+     "system_recall": 0.4692682926829268,
+     "heldout_family_recall": 0.38634146341463416,
+     "system_synth_fpr": 0.0,
+     "system_real_holdout_flag_rate": 0.007389162561576354,
+     "heldout_family_auc": 0.8198310787729726
+    },
+    "obfuscation": {
+     "val_f1": 0.509212730318258,
+     "system_recall": 0.2734375,
+     "heldout_family_recall": 0.24609375,
+     "system_synth_fpr": 0.015541113308844307,
+     "system_real_holdout_flag_rate": 0.012883668056081848,
+     "heldout_family_auc": 0.7589152473206716
+    },
+    "packed": {
+     "val_f1": 0.0,
+     "system_recall": 0.5483549351944168,
+     "heldout_family_recall": 0.5104685942173479,
+     "system_synth_fpr": 0.004314387544550741,
+     "system_real_holdout_flag_rate": 0.0018946570670708603,
+     "heldout_family_auc": 0.9957733253063917
+    },
+    "crypto": {
+     "val_f1": 0.7660114140773621,
+     "system_recall": 0.6885512750949538,
+     "heldout_family_recall": 0.657080846446012,
+     "system_synth_fpr": 0.013885107541519195,
+     "system_real_holdout_flag_rate": 0.057976506252368325,
+     "heldout_family_auc": 0.9026895388161237
+    },
+    "network": {
+     "val_f1": 0.9669075694180297,
+     "system_recall": 0.9577133907595928,
+     "heldout_family_recall": 0.9577133907595928,
+     "system_synth_fpr": 0.013446707534111133,
+     "system_real_holdout_flag_rate": 0.07919666540356196,
+     "heldout_family_auc": 0.988548634834616
+    }
+   }
+  },
+  {
+   "params": {
+    "n_estimators": 400,
+    "max_depth": 4,
+    "learning_rate": 0.05,
+    "min_samples_leaf": 12
+   },
+   "mean_val_f1": 0.5877233178862523,
+   "mean_test_system_recall": 0.5912619734227326,
+   "caps": {
+    "anti_debug": {
+     "val_f1": 0.5948352626892253,
+     "system_recall": 0.6274843838727996,
+     "heldout_family_recall": 0.41624077228847245,
+     "system_synth_fpr": 0.027115678985348786,
+     "system_real_holdout_flag_rate": 0.0060629026146267525,
+     "heldout_family_auc": 0.7587921003375986
+    },
+    "anti_vm": {
+     "val_f1": 0.7440347071583514,
+     "system_recall": 0.4712195121951219,
+     "heldout_family_recall": 0.3882926829268293,
+     "system_synth_fpr": 0.0,
+     "system_real_holdout_flag_rate": 0.007957559681697613,
+     "heldout_family_auc": 0.8208673794721141
+    },
+    "obfuscation": {
+     "val_f1": 0.4983164983164983,
+     "system_recall": 0.26395089285714285,
+     "heldout_family_recall": 0.23604910714285715,
+     "system_synth_fpr": 0.013845719129697655,
+     "system_real_holdout_flag_rate": 0.013073133762788935,
+     "heldout_family_auc": 0.7556954648205708
+    },
+    "packed": {
+     "val_f1": 0.0,
+     "system_recall": 0.5503489531405783,
+     "heldout_family_recall": 0.5114656031904287,
+     "system_synth_fpr": 0.004314387544550741,
+     "system_real_holdout_flag_rate": 0.0018946570670708603,
+     "heldout_family_auc": 0.9963865671789732
+    },
+    "crypto": {
+     "val_f1": 0.7248677248677249,
+     "system_recall": 0.6760716223548562,
+     "heldout_family_recall": 0.636462289744981,
+     "system_synth_fpr": 0.012523822488429077,
+     "system_real_holdout_flag_rate": 0.057408109132247066,
+     "heldout_family_auc": 0.8997789887609411
+    },
+    "network": {
+     "val_f1": 0.9642857142857143,
+     "system_recall": 0.9584964761158966,
+     "heldout_family_recall": 0.9584964761158966,
+     "system_synth_fpr": 0.016808384417638916,
+     "system_real_holdout_flag_rate": 0.07900719969685487,
+     "heldout_family_auc": 0.9862963159682052
+    }
+   }
+  },
+  {
+   "params": {
+    "n_estimators": 400,
+    "max_depth": 4,
+    "learning_rate": 0.12,
+    "min_samples_leaf": 6
+   },
+   "mean_val_f1": 0.5874936977818026,
+   "mean_test_system_recall": 0.5970717518832486,
+   "caps": {
+    "anti_debug": {
+     "val_f1": 0.5982758620689655,
+     "system_recall": 0.6541737649063032,
+     "heldout_family_recall": 0.45315161839863716,
+     "system_synth_fpr": 0.04373496610540127,
+     "system_real_holdout_flag_rate": 0.006441834028040924,
+     "heldout_family_auc": 0.7382305195309157
+    },
+    "anti_vm": {
+     "val_f1": 0.7440347071583514,
+     "system_recall": 0.47073170731707314,
+     "heldout_family_recall": 0.3873170731707317,
+     "system_synth_fpr": 0.0,
+     "system_real_holdout_flag_rate": 0.006631299734748011,
+     "heldout_family_auc": 0.7638870100885882
+    },
+    "obfuscation": {
+     "val_f1": 0.5231788079470199,
+     "system_recall": 0.2818080357142857,
+     "heldout_family_recall": 0.25558035714285715,
+     "system_synth_fpr": 0.014410850522746538,
+     "system_real_holdout_flag_rate": 0.012883668056081848,
+     "heldout_family_auc": 0.7572915983379083
+    },
+    "packed": {
+     "val_f1": 0.0,
+     "system_recall": 0.5473579262213359,
+     "heldout_family_recall": 0.5084745762711864,
+     "system_synth_fpr": 0.004126805477396361,
+     "system_real_holdout_flag_rate": 0.0018946570670708603,
+     "heldout_family_auc": 0.9965032682855579
+    },
+    "crypto": {
+     "val_f1": 0.6998654104979811,
+     "system_recall": 0.6706456863809007,
+     "heldout_family_recall": 0.6218122626153011,
+     "system_synth_fpr": 0.010618023414102912,
+     "system_real_holdout_flag_rate": 0.05646078059871163,
+     "heldout_family_auc": 0.8980182555490277
+    },
+    "network": {
+     "val_f1": 0.9596073990184976,
+     "system_recall": 0.9577133907595928,
+     "heldout_family_recall": 0.9569303054032889,
+     "system_synth_fpr": 0.02432272098081867,
+     "system_real_holdout_flag_rate": 0.07919666540356196,
+     "heldout_family_auc": 0.982248878060277
+    }
+   }
+  },
+  {
+   "params": {
+    "n_estimators": 400,
+    "max_depth": 4,
+    "learning_rate": 0.12,
+    "min_samples_leaf": 12
+   },
+   "mean_val_f1": 0.5862596119281593,
+   "mean_test_system_recall": 0.5925302377479116,
+   "caps": {
+    "anti_debug": {
+     "val_f1": 0.6001719690455718,
+     "system_recall": 0.6507666098807495,
+     "heldout_family_recall": 0.4503123225440091,
+     "system_synth_fpr": 0.03826809534222611,
+     "system_real_holdout_flag_rate": 0.006441834028040924,
+     "heldout_family_auc": 0.741697217192039
+    },
+    "anti_vm": {
+     "val_f1": 0.7440347071583514,
+     "system_recall": 0.47024390243902436,
+     "heldout_family_recall": 0.38682926829268294,
+     "system_synth_fpr": 0.0,
+     "system_real_holdout_flag_rate": 0.006631299734748011,
+     "heldout_family_auc": 0.7562881738061078
+    },
+    "obfuscation": {
+     "val_f1": 0.5158069883527454,
+     "system_recall": 0.27566964285714285,
+     "heldout_family_recall": 0.24776785714285715,
+     "system_synth_fpr": 0.015541113308844307,
+     "system_real_holdout_flag_rate": 0.013073133762788935,
+     "heldout_family_auc": 0.7575718776490534
+    },
+    "packed": {
+     "val_f1": 0.0,
+     "system_recall": 0.5443668993020937,
+     "heldout_family_recall": 0.5054835493519442,
+     "system_synth_fpr": 0.004126805477396361,
+     "system_real_holdout_flag_rate": 0.0018946570670708603,
+     "heldout_family_auc": 0.9962029125529059
+    },
+    "crypto": {
+     "val_f1": 0.6941015089163237,
+     "system_recall": 0.6603364080303853,
+     "heldout_family_recall": 0.594139989148128,
+     "system_synth_fpr": 0.00952899537163082,
+     "system_real_holdout_flag_rate": 0.05759757483895415,
+     "heldout_family_auc": 0.8978546502103086
+    },
+    "network": {
+     "val_f1": 0.9634424980959635,
+     "system_recall": 0.9537979639780736,
+     "heldout_family_recall": 0.9537979639780736,
+     "system_synth_fpr": 0.015819655922483685,
+     "system_real_holdout_flag_rate": 0.07900719969685487,
+     "heldout_family_auc": 0.9881200825855412
+    }
+   }
+  },
+  {
+   "params": {
+    "n_estimators": 400,
+    "max_depth": 5,
+    "learning_rate": 0.05,
+    "min_samples_leaf": 6
+   },
+   "mean_val_f1": 0.5947298586122145,
+   "mean_test_system_recall": 0.593389659372985,
+   "caps": {
+    "anti_debug": {
+     "val_f1": 0.5881326352530541,
+     "system_recall": 0.6411130039750143,
+     "heldout_family_recall": 0.434412265758092,
+     "system_synth_fpr": 0.03739339602011808,
+     "system_real_holdout_flag_rate": 0.006441834028040924,
+     "heldout_family_auc": 0.7448458367280086
+    },
+    "anti_vm": {
+     "val_f1": 0.742671009771987,
+     "system_recall": 0.4712195121951219,
+     "heldout_family_recall": 0.3873170731707317,
+     "system_synth_fpr": 0.0,
+     "system_real_holdout_flag_rate": 0.0060629026146267525,
+     "heldout_family_auc": 0.7912707522033203
+    },
+    "obfuscation": {
+     "val_f1": 0.5256198347107438,
+     "system_recall": 0.265625,
+     "heldout_family_recall": 0.23883928571428573,
+     "system_synth_fpr": 0.013280587736648771,
+     "system_real_holdout_flag_rate": 0.012694202349374763,
+     "heldout_family_auc": 0.7619279936826384
+    },
+    "packed": {
+     "val_f1": 0.0,
+     "system_recall": 0.5483549351944168,
+     "heldout_family_recall": 0.5104685942173479,
+     "system_synth_fpr": 0.004314387544550741,
+     "system_real_holdout_flag_rate": 0.0018946570670708603,
+     "heldout_family_auc": 0.9963349493818301
+    },
+    "crypto": {
+     "val_f1": 0.7477243172951885,
+     "system_recall": 0.6755290287574607,
+     "heldout_family_recall": 0.6353771025501899,
+     "system_synth_fpr": 0.010618023414102912,
+     "system_real_holdout_flag_rate": 0.05683971201212581,
+     "heldout_family_auc": 0.9037393458947763
+    },
+    "network": {
+     "val_f1": 0.9642313546423136,
+     "system_recall": 0.9584964761158966,
+     "heldout_family_recall": 0.9569303054032889,
+     "system_synth_fpr": 0.016215147320545777,
+     "system_real_holdout_flag_rate": 0.07919666540356196,
+     "heldout_family_auc": 0.9870473470099442
+    }
+   }
+  },
+  {
+   "params": {
+    "n_estimators": 400,
+    "max_depth": 5,
+    "learning_rate": 0.05,
+    "min_samples_leaf": 12
+   },
+   "mean_val_f1": 0.5921322942362165,
+   "mean_test_system_recall": 0.5953202837709793,
+   "caps": {
+    "anti_debug": {
+     "val_f1": 0.5940766550522648,
+     "system_recall": 0.6365701306076094,
+     "heldout_family_recall": 0.43214082907438955,
+     "system_synth_fpr": 0.03586267220642904,
+     "system_real_holdout_flag_rate": 0.006441834028040924,
+     "heldout_family_auc": 0.7498803248904484
+    },
+    "anti_vm": {
+     "val_f1": 0.7440347071583514,
+     "system_recall": 0.4717073170731707,
+     "heldout_family_recall": 0.3907317073170732,
+     "system_synth_fpr": 0.0,
+     "system_real_holdout_flag_rate": 0.007578628268283441,
+     "heldout_family_auc": 0.7563226184782856
+    },
+    "obfuscation": {
+     "val_f1": 0.5256198347107438,
+     "system_recall": 0.27622767857142855,
+     "heldout_family_recall": 0.24888392857142858,
+     "system_synth_fpr": 0.01610624470189319,
+     "system_real_holdout_flag_rate": 0.012694202349374763,
+     "heldout_family_auc": 0.7635765563819481
+    },
+    "packed": {
+     "val_f1": 0.0,
+     "system_recall": 0.5623130608175474,
+     "heldout_family_recall": 0.5234297108673978,
+     "system_synth_fpr": 0.004314387544550741,
+     "system_real_holdout_flag_rate": 0.0018946570670708603,
+     "heldout_family_auc": 0.9966573735929707
+    },
+    "crypto": {
+     "val_f1": 0.7273927392739274,
+     "system_recall": 0.6673901247965274,
+     "heldout_family_recall": 0.6163863266413456,
+     "system_synth_fpr": 0.012251565477811054,
+     "system_real_holdout_flag_rate": 0.05949223190602501,
+     "heldout_family_auc": 0.9017823601388556
+    },
+    "network": {
+     "val_f1": 0.9616698292220114,
+     "system_recall": 0.9577133907595928,
+     "heldout_family_recall": 0.9577133907595928,
+     "system_synth_fpr": 0.019379078505042516,
+     "system_real_holdout_flag_rate": 0.07900719969685487,
+     "heldout_family_auc": 0.986365379853693
+    }
+   }
+  },
+  {
+   "params": {
+    "n_estimators": 400,
+    "max_depth": 5,
+    "learning_rate": 0.12,
+    "min_samples_leaf": 6
+   },
+   "mean_val_f1": 0.5884028634889685,
+   "mean_test_system_recall": 0.596096390621979,
+   "caps": {
+    "anti_debug": {
+     "val_f1": 0.607725321888412,
+     "system_recall": 0.6604202157864849,
+     "heldout_family_recall": 0.4616695059625213,
+     "system_synth_fpr": 0.046140389241198336,
+     "system_real_holdout_flag_rate": 0.006441834028040924,
+     "heldout_family_auc": 0.7275877856509824
+    },
+    "anti_vm": {
+     "val_f1": 0.7421109902067464,
+     "system_recall": 0.47024390243902436,
+     "heldout_family_recall": 0.38341463414634147,
+     "system_synth_fpr": 0.0,
+     "system_real_holdout_flag_rate": 0.006441834028040924,
+     "heldout_family_auc": 0.7385060121609619
+    },
+    "obfuscation": {
+     "val_f1": 0.5244003308519437,
+     "system_recall": 0.27176339285714285,
+     "heldout_family_recall": 0.24553571428571427,
+     "system_synth_fpr": 0.012998022040124329,
+     "system_real_holdout_flag_rate": 0.012694202349374763,
+     "heldout_family_auc": 0.7634350370110603
+    },
+    "packed": {
+     "val_f1": 0.0,
+     "system_recall": 0.5473579262213359,
+     "heldout_family_recall": 0.5084745762711864,
+     "system_synth_fpr": 0.004314387544550741,
+     "system_real_holdout_flag_rate": 0.0017051913603637742,
+     "heldout_family_auc": 0.9967675289644106
+    },
+    "crypto": {
+     "val_f1": 0.7018970189701897,
+     "system_recall": 0.6706456863809007,
+     "heldout_family_recall": 0.6163863266413456,
+     "system_synth_fpr": 0.012251565477811054,
+     "system_real_holdout_flag_rate": 0.05665024630541872,
+     "heldout_family_auc": 0.89878620349786
+    },
+    "network": {
+     "val_f1": 0.9542835190165194,
+     "system_recall": 0.9561472200469852,
+     "heldout_family_recall": 0.9397024275646045,
+     "system_synth_fpr": 0.016017401621514733,
+     "system_real_holdout_flag_rate": 0.07919666540356196,
+     "heldout_family_auc": 0.9790562218740809
+    }
+   }
+  },
+  {
+   "params": {
+    "n_estimators": 400,
+    "max_depth": 5,
+    "learning_rate": 0.12,
+    "min_samples_leaf": 12
+   },
+   "mean_val_f1": 0.5904536338126788,
+   "mean_test_system_recall": 0.5929787554614695,
+   "caps": {
+    "anti_debug": {
+     "val_f1": 0.611965811965812,
+     "system_recall": 0.6513344690516751,
+     "heldout_family_recall": 0.45201590005678594,
+     "system_synth_fpr": 0.04373496610540127,
+     "system_real_holdout_flag_rate": 0.006441834028040924,
+     "heldout_family_auc": 0.7346036962627714
+    },
+    "anti_vm": {
+     "val_f1": 0.7440347071583514,
+     "system_recall": 0.4717073170731707,
+     "heldout_family_recall": 0.3873170731707317,
+     "system_synth_fpr": 0.0,
+     "system_real_holdout_flag_rate": 0.006631299734748011,
+     "heldout_family_auc": 0.7473072806358316
+    },
+    "obfuscation": {
+     "val_f1": 0.5402298850574713,
+     "system_recall": 0.29017857142857145,
+     "heldout_family_recall": 0.26450892857142855,
+     "system_synth_fpr": 0.015258547612319864,
+     "system_real_holdout_flag_rate": 0.012883668056081848,
+     "heldout_family_auc": 0.7661280047834336
+    },
+    "packed": {
+     "val_f1": 0.0,
+     "system_recall": 0.5443668993020937,
+     "heldout_family_recall": 0.5054835493519442,
+     "system_synth_fpr": 0.004126805477396361,
+     "system_real_holdout_flag_rate": 0.0018946570670708603,
+     "heldout_family_auc": 0.9968844170919992
+    },
+    "crypto": {
+     "val_f1": 0.6979591836734694,
+     "system_recall": 0.6668475311991319,
+     "heldout_family_recall": 0.5919696147585458,
+     "system_synth_fpr": 0.014157364552137218,
+     "system_real_holdout_flag_rate": 0.058734369079196665,
+     "heldout_family_auc": 0.8981347366411994
+    },
+    "network": {
+     "val_f1": 0.9485322150209684,
+     "system_recall": 0.9334377447141738,
+     "heldout_family_recall": 0.9318715740015662,
+     "system_synth_fpr": 0.02412497528178762,
+     "system_real_holdout_flag_rate": 0.07900719969685487,
+     "heldout_family_auc": 0.9840798452845085
+    }
+   }
+  }
+ ],
+ "best": {
+  "params": {
+   "n_estimators": 200,
+   "max_depth": 3,
+   "learning_rate": 0.12,
+   "min_samples_leaf": 6
+  },
+  "mean_val_f1": 0.61458222143914,
+  "mean_test_system_recall": 0.595360860942273,
+  "caps": {
+   "anti_debug": {
+    "val_f1": 0.7026578073089701,
+    "system_recall": 0.6394094264622374,
+    "heldout_family_recall": 0.4565587734241908,
+    "system_synth_fpr": 0.022304832713754646,
+    "system_real_holdout_flag_rate": 0.006441834028040924,
+    "heldout_family_auc": 0.7579015064224711
+   },
+   "anti_vm": {
+    "val_f1": 0.7432286023835319,
+    "system_recall": 0.46682926829268295,
+    "heldout_family_recall": 0.38439024390243903,
+    "system_synth_fpr": 0.0,
+    "system_real_holdout_flag_rate": 0.007768093974990527,
+    "heldout_family_auc": 0.8266746942679511
+   },
+   "obfuscation": {
+    "val_f1": 0.4983164983164983,
+    "system_recall": 0.2661830357142857,
+    "heldout_family_recall": 0.23828125,
+    "system_synth_fpr": 0.018084204577564284,
+    "system_real_holdout_flag_rate": 0.013830996589617279,
+    "heldout_family_auc": 0.7467221117749163
+   },
+   "packed": {
+    "val_f1": 0.0,
+    "system_recall": 0.5483549351944168,
+    "heldout_family_recall": 0.5094715852442672,
+    "system_synth_fpr": 0.004126805477396361,
+    "system_real_holdout_flag_rate": 0.0018946570670708603,
+    "heldout_family_auc": 0.9940794760718781
+   },
+   "crypto": {
+    "val_f1": 0.7763074984247007,
+    "system_recall": 0.6928920238741183,
+    "heldout_family_recall": 0.6614215952251763,
+    "system_synth_fpr": 0.013885107541519195,
+    "system_real_holdout_flag_rate": 0.058734369079196665,
+    "heldout_family_auc": 0.8985903941285848
+   },
+   "network": {
+    "val_f1": 0.9669829222011386,
+    "system_recall": 0.9584964761158966,
+    "heldout_family_recall": 0.9584964761158966,
+    "system_synth_fpr": 0.017203875815701007,
+    "system_real_holdout_flag_rate": 0.07919666540356196,
+    "heldout_family_auc": 0.985559376436734
+   }
+  }
+ }
+}

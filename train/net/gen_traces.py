@@ -29,8 +29,15 @@ H = 3600.0
 FLOW_FAMILIES = ["exfil_https_cloud", "exfil_direct_ip", "exfil_oddport", "exfil_parallel", "exfil_pull_inbound",
                  "exfil_udp", "exfil_staged", "slow_drip", "beacon_regular", "beacon_jitter", "beacon_long_sleep",
                  "beacon_named", "beacon_tasks", "revshell", "compromised_service_exfil", "spam_bot", "ddos_http",
-                 "ddos_udp"]
-DNS_FAMILIES = ["dns_tunnel_fast", "dns_tunnel_slow", "dns_txt_c2", "dns_exfil_a", "dns_exfil_b64"]
+                 "ddos_udp", "webhook_exfil", "ws_c2", "exfil_backup_time", "low_and_slow", "miner", "lateral",
+                 "beacon_backoff", "exfil_rclone", "heartbeat_c2"]
+DNS_FAMILIES = ["dns_tunnel_fast", "dns_tunnel_slow", "dns_txt_c2", "dns_exfil_a", "dns_exfil_b64", "dns_beacon", "dns_idle_poll"]
+# Parameter ranges below follow published defaults / reports where available:
+# Cobalt Strike 60 s / 0% default, profiles 30-60 s at 10-50% jitter; Mythic 10 s / 20%;
+# Havoc 2 s / 15%; Meterpreter HTTPS backs off when idle; Mirai 2-byte heartbeat / 60 s;
+# iodine pings every 4 s; dnscat2 polls <= 1 s in hex; CS DNS: one short A query per sleep;
+# rclone 4 transfers, 5 MiB chunks; MITRE T1030 chunk sizes 384-512 KB, <1 MB, 3 MB;
+# XMR stratum ~41 packets/min of ~105 B over one long connection.
 CLOUD = ["s3.amazonaws.com", "blob.core.windows.net", "storage.googleapis.com", "transfer.sh", "mega.nz", "ngrok.io",
          "api.telegram.org", "discord.com", "pastebin.com", "dropboxapi.com", "workers.dev", "trycloudflare.com"]
 WORDS = ["api", "cdn", "update", "static", "img", "push", "auth", "status", "mirror", "dl", "edge", "app", "files", "rss"]
@@ -94,13 +101,18 @@ class Trace:
                 k += 1
         self.add(t + dur, dict(base, sent=int(out), recv=int(inn), closed=True))
 
-    def udp(self, t, ent, rip, rport, nbytes, pkt=1200):
-        # sampled packets (1/16), like the live capture
+    def udp(self, t, ent, rip, rport, nbytes, pkt=1200, back=0.0, back_pkt=120):
+        """Sampled packets (1/16), like the live capture; `back` = bytes flowing in
+        from the peer (acks, replies) as a fraction of nbytes."""
         if not self.caps[2]:
             return
-        n = int(nbytes / pkt / 16)
-        for i in range(max(n, 1 if self.r.random() < nbytes / pkt / 16 else 0)):
-            self.add(t + self.r.random() * 60, {"e": "udp", "ent": ent, "rip": rip, "rport": rport, "len": pkt, "scale": 16})
+        for nb, pk, inbound in ((nbytes, pkt, False), (nbytes * back, back_pkt, True)):
+            n = int(nb / pk / 16)
+            for i in range(max(n, 1 if self.r.random() < nb / pk / 16 else 0)):
+                d = {"e": "udp", "ent": ent, "rip": rip, "rport": rport, "len": pk, "scale": 16}
+                if inbound:
+                    d["inbound"] = True
+                self.add(t + self.r.random() * 60, d)
 
     def label(self, ent, dest, t0, t1, kind):
         self.ev.append((t0, {"e": "label", "ent": ent, "dest": dest, "t0": t0, "t1": t1, "kind": kind}))
@@ -118,6 +130,15 @@ def rand_word(r):
     syl = ["ka", "lo", "mi", "ne", "ru", "ta", "vo", "zen", "bri", "cor", "dex", "fin", "gal", "hub", "lyn", "mar", "net",
            "pix", "qua", "sol", "tron", "vel", "wix", "yar"]
     return "".join(r.choice(syl) for _ in range(r.randint(2, 3)))
+
+
+# ports that look "suspicious" but that p2p peers pick by chance
+ODDISH = [1337, 3389, 4444, 5555, 7777, 9999, 12345, 54321, 3333, 14444, 8888, 6667, 5900, 1080, 31337]
+
+
+def peer_port(r):
+    """A p2p peer's listening port: random over the whole range (sometimes an 'odd' one)."""
+    return r.choice(ODDISH) if r.random() < 0.02 else r.randint(1025, 65535)
 
 
 def lognorm(r, mean, sigma=1.0):
@@ -166,9 +187,9 @@ def svc_p2p(tr, ent="/usr/local/sbin/i2pd"):
         dur = lognorm(r, 900, 1.0)
         rate_o, rate_i = lognorm(r, 3000, 1.2), lognorm(r, 3000, 1.2)
         inbound = r.random() < 0.4
-        tr.conn(t, ent, peer, r.randint(9000, 31000) if not inbound else port, dur, rate_o * dur, rate_i * dur, inbound=inbound, step=60)
+        tr.conn(t, ent, peer, peer_port(r) if not inbound else port, dur, rate_o * dur, rate_i * dur, inbound=inbound, step=60)
         if r.random() < 0.3:
-            tr.udp(t, ent, tr.pub_ip(), r.randint(9000, 31000), lognorm(r, 2e5, 1.0))
+            tr.udp(t, ent, tr.pub_ip(), peer_port(r), lognorm(r, 2e5, 1.0), back=r.uniform(0.3, 1.5))
 
 
 def svc_vpn(tr, ent="/usr/sbin/tailscaled"):
@@ -187,6 +208,10 @@ def svc_vpn(tr, ent="/usr/sbin/tailscaled"):
             d = r.choice(derps)
     for t in poisson_times(r, tr.t0, tr.t1, 4):
         tr.conn(t, ent, f"100.{r.randint(64, 127)}.{r.randint(0, 255)}.{r.randint(1, 254)}", 41641, lognorm(r, 60), lognorm(r, 2e5), lognorm(r, 2e6))
+    # direct WireGuard path to a peer's public address: big UDP both ways (not a flood)
+    peer = tr.pub_ip()
+    for t in poisson_times(r, tr.t0, tr.t1, 1):
+        tr.udp(t, ent, peer, 41641, lognorm(r, 5e7, 1.2), pkt=1300, back=r.uniform(0.05, 2.0), back_pkt=1300)
 
 
 def svc_poller(tr, ent=None):
@@ -273,8 +298,12 @@ def svc_dns(tr, ent=None):
             name, qt = f"r{r.randint(1, 9)}---sn-{rand_label(r, 8)}.googlevideo.com", 1
         elif u < 0.85:  # reverse lookups
             name, qt = ".".join(str(r.randint(0, 255)) for _ in range(4)) + ".in-addr.arpa", 12
-        elif u < 0.92:  # antivirus / reputation hash lookups
-            name, qt = f"{rand_label(r, 32, '0123456789abcdef')}.hashes.{r.choice(['avqs-example', 'rep-check'])}.com", 1
+        elif u < 0.92:  # antivirus / reputation hash lookups (some products use long encoded labels)
+            if r.random() < 0.5:
+                name, qt = f"{rand_label(r, 32, '0123456789abcdef')}.hashes.{r.choice(['avqs-example', 'rep-check'])}.com", 1
+            else:
+                lab = base64.b32encode(rbytes(r, r.randint(20, 36))).decode().lower().rstrip("=")
+                name, qt = f"{lab[:63]}.{rand_label(r, 4)}.{r.choice(['p', 'q', 'f'])}.avlookup-example.net", 16
         elif u < 0.97:  # DNS blocklists (mail servers)
             name, qt = ".".join(str(r.randint(0, 255)) for _ in range(4)) + ".zen.spamhaus.org", 1
         else:  # ACME DNS-01 challenges / SPF / DKIM TXT
@@ -330,9 +359,103 @@ def svc_browse(tr):
         name, ip = tr.domain(), tr.pub_ip()
         tr.resolve(t - 0.05, name, [ip])
         video = r.random() < 0.03
+        if r.random() < 0.3:  # HTTP/3 (QUIC): mostly download, acks up
+            tr.udp(t, ent, ip, 443, lognorm(r, 2e4), pkt=80, back=lognorm(r, 200, 1.0), back_pkt=1350)
+            continue
         tr.conn(t, ent, ip, 443, lognorm(r, 600 if video else 20), lognorm(r, 2e4), lognorm(r, 3e8 if video else 3e5, 1.2), step=60)
         if r.random() < 0.02:   # form / photo / attachment upload
             tr.conn(t + 5, ent, ip, 443, 10, lognorm(r, 5e6, 1.0), 4000)
+
+
+def svc_mail(tr, ent="/usr/libexec/postfix/smtp"):
+    """A real mail server: SMTP to many MX hosts is its job (spam-rule hard negative)."""
+    r = tr.r
+    tr.add(tr.t0, {"e": "listen", "ent": ent})
+    for t in poisson_times(r, tr.t0, tr.t1, r.choice([5, 30, 120])):
+        mx = tr.pub_ip()
+        tr.resolve(t - 0.1, f"mx{r.randint(1, 3)}.{rand_word(r)}.{r.choice(TLDS)}", [mx], ent, qtype=15)
+        tr.conn(t, ent, mx, 25, 2 + r.random() * 3, lognorm(r, 3e4, 1.2), 1500)
+    for t in poisson_times(r, tr.t0, tr.t1, 20):
+        tr.conn(t, ent, tr.pub_ip(), 25, 3, 1500, lognorm(r, 2e4, 1.2), inbound=True)
+
+
+def svc_syncthing(tr, ent="/usr/bin/syncthing"):
+    r = tr.r
+    tr.add(tr.t0, {"e": "listen", "ent": ent})
+    peers = [f"100.{r.randint(64, 127)}.{r.randint(0, 255)}.{r.randint(1, 254)}" for _ in range(r.randint(1, 3))] + \
+            ([tr.pub_ip()] if r.random() < 0.5 else [])
+    for t in poisson_times(r, tr.t0, tr.t1, 2):
+        p = r.choice(peers)
+        up = lognorm(r, 2e7, 1.5)
+        tr.conn(t, ent, p, 22000, up / 5e6 + 5, up, up * r.uniform(0.01, 1.0), step=60)
+
+
+def svc_registry_push(tr):
+    r = tr.r
+    ent = r.choice(["/usr/bin/docker", "/usr/bin/podman", "ctr:aa11bb22cc33:/usr/bin/kaniko", "/usr/bin/buildah"])
+    ip = tr.pub_ip()
+    t = tr.t0 + r.uniform(0.1, 0.8) * min(24 * H, tr.t1 - tr.t0)
+    while t < tr.t1:
+        tr.resolve(t - 0.2, r.choice(["registry-1.docker.io", "ghcr.io", "quay.io", "registry.gitlab.com"]), [ip], ent)
+        size = lognorm(r, 3e8, 0.8)
+        tr.conn(t, ent, ip, 443, size / 2e7 + 3, size, size / 300, step=30)
+        t += r.choice([12, 24, 48]) * H * r.uniform(0.8, 1.2)
+
+
+def svc_stream(tr, ent="/usr/lib/jellyfin/jellyfin"):
+    r = tr.r
+    tr.add(tr.t0, {"e": "listen", "ent": ent})
+    clients = [f"100.{r.randint(64, 127)}.{r.randint(0, 255)}.{r.randint(1, 254)}" for _ in range(3)] + [tr.pub_ip()]
+    for t in poisson_times(r, tr.t0, tr.t1, 0.4):
+        dur = lognorm(r, 3000, 0.6)
+        tr.conn(t, ent, r.choice(clients), 8096, dur, dur * lognorm(r, 6e5, 0.5), dur * 300, inbound=True, step=60)
+
+
+def svc_prometheus(tr, ent="ctr:5e6f7a8b9c0d:/bin/prometheus"):
+    r = tr.r
+    targets = [f"172.18.0.{r.randint(2, 20)}" for _ in range(r.randint(3, 10))]
+    t = tr.t0
+    period = r.choice([15, 30, 60])
+    while t < tr.t1:
+        for tg in targets:
+            tr.conn(t + r.random(), ent, tg, r.choice([9100, 9090, 8080]), 0.1, 300, lognorm(r, 2e4, 0.3))
+        t += period
+
+
+def svc_tor(tr, ent="/usr/bin/tor"):
+    r = tr.r
+    tr.add(tr.t0, {"e": "listen", "ent": ent})
+    for t in poisson_times(r, tr.t0, tr.t1, r.choice([30, 100])):
+        dur = lognorm(r, 1800, 1.0)
+        rate = lognorm(r, 2e4, 1.2)
+        tr.conn(t, ent, tr.pub_ip(), r.choice([9001, 443, 9030, peer_port(r)]), dur, rate * dur, rate * dur * r.uniform(0.8, 1.2),
+                inbound=r.random() < 0.5, step=60)
+
+
+def svc_torrent(tr, ent="/usr/bin/qbittorrent-nox"):
+    r = tr.r
+    tr.add(tr.t0, {"e": "listen", "ent": ent})
+    for t in poisson_times(r, tr.t0, tr.t1, r.choice([20, 80])):
+        dur = lognorm(r, 900, 1.0)
+        up = lognorm(r, 3e7, 1.3)  # seeding: mostly upload
+        tr.conn(t, ent, tr.pub_ip(), peer_port(r), dur, up, up * r.uniform(0.001, 0.3), inbound=r.random() < 0.5, step=60)
+        if r.random() < 0.3:
+            tr.udp(t, ent, tr.pub_ip(), peer_port(r), lognorm(r, 5e6, 1.0), back=0.03)
+
+
+def svc_websocket(tr):
+    """Legitimate long-lived connections with keepalives (home automation, chat, push)."""
+    r = tr.r
+    ent = r.choice(["ctr:ab12cd34ef56:/usr/local/bin/hass", "/usr/bin/gotify", "/usr/lib/ntfy/ntfy", "/usr/bin/element-bot"])
+    name, ip = tr.domain(), tr.pub_ip()
+    tr.resolve(tr.t0 + 1, name, [ip], ent)
+    t = tr.t0 + 2
+    ka = r.choice([20, 30, 60, 300])
+    while t < tr.t1:
+        dur = min(lognorm(r, 6 * H, 0.8), tr.t1 - t)
+        n = dur / ka
+        tr.conn(t, ent, ip, 443, dur, n * lognorm(r, 200, 0.3), n * lognorm(r, 400, 0.5), step=ka)
+        t += dur + r.random() * 30
 
 
 def svc_ntp(tr):
@@ -343,7 +466,9 @@ def svc_ntp(tr):
 
 BENIGN = [(svc_web, 0.7), (svc_p2p, 0.5), (svc_vpn, 0.6), (svc_poller, 0.9), (svc_poller, 0.6), (svc_poller, 0.3),
           (svc_backup, 0.6), (svc_pkg, 0.7), (svc_git, 0.3), (svc_ssh, 0.8), (svc_dns, 0.95), (svc_ntp, 0.6),
-          (svc_user_tool, 0.7), (svc_user_tool, 0.4), (svc_fetcher, 0.4), (svc_browse, 0.2)]
+          (svc_user_tool, 0.7), (svc_user_tool, 0.4), (svc_fetcher, 0.4), (svc_browse, 0.2), (svc_mail, 0.15),
+          (svc_syncthing, 0.25), (svc_registry_push, 0.2), (svc_stream, 0.25), (svc_prometheus, 0.3), (svc_tor, 0.1),
+          (svc_torrent, 0.15), (svc_websocket, 0.4), (svc_websocket, 0.15)]
 
 # ------------------------------------------------------------------ attacks
 
@@ -401,7 +526,7 @@ def a_flow(tr, fam, start):
             t += 60
         end = start + dur
     elif fam == "exfil_staged":
-        chunk = lognorm(r, 2e7, 0.6)
+        chunk = r.choice([r.uniform(384e3, 512e3), r.uniform(2e5, 1e6), 3e6, 5.24e6, lognorm(r, 2e7, 0.6)])
         every = r.choice([60, 300, 600])
         for i in range(r.randint(5, 30)):
             t = start + i * every * r.uniform(0.8, 1.2)
@@ -414,6 +539,82 @@ def a_flow(tr, fam, start):
             t = start + i * every * r.uniform(0.5, 1.5)
             tr.conn(t, ent, ip, r.choice([443, 80, 8080]), 1 + r.random(), lognorm(r, 2e5, 0.8), lognorm(r, 400))
             end = t
+    elif fam == "webhook_exfil":
+        host = r.choice(["discord.com", "api.telegram.org", "hooks.slack.com", "webhook.site", "pipedream.net"])
+        tr.resolve(start - 0.2, host, [ip], ent)
+        every = r.choice([30, 120, 600])
+        for i in range(r.randint(10, 120)):
+            t = start + i * every * r.uniform(0.7, 1.3)
+            if t > tr.t1:
+                break
+            tr.conn(t, ent, ip, 443, 1 + r.random(), lognorm(r, 2e5, 0.8), lognorm(r, 1500, 0.3))
+            end = t
+    elif fam == "ws_c2":
+        if r.random() < 0.5:
+            tr.resolve(start - 0.2, tr.domain(), [ip], ent)
+        period = r.choice([5, 10, 30, 60])
+        dur = min(lognorm(r, 3 * H, 0.6), tr.t1 - start)
+        n = dur / period
+        tr.conn(start, ent, ip, r.choice([443, 443, 8443, 80]), dur, n * lognorm(r, 300, 0.3) + lognorm(r, 2e6, 1.0),
+                n * lognorm(r, 200, 0.3), step=period)
+        end = start + dur
+    elif fam == "exfil_backup_time":
+        size = lognorm(r, 2e9, 0.6)
+        dur = size / lognorm(r, 2e7, 0.4)
+        tr.conn(start, ent, ip, 443, dur, size, size / 300, step=30)
+        end = start + dur
+    elif fam == "low_and_slow":
+        t = start
+        while t < min(tr.t1, start + 48 * H):
+            tr.conn(t, ent, ip, r.choice([443, 80]), 1 + r.random(), lognorm(r, 3e4, 0.8), lognorm(r, 500, 0.3))
+            end = t
+            t += r.uniform(0.3, 2.0) * H
+    elif fam == "miner":
+        pool = r.choice(["pool.supportxmr.com", "xmr.2miners.com", "gulf.moneroocean.stream", "rx.unmineable.com", None])
+        if pool:
+            tr.resolve(start - 0.2, pool, [ip], None)
+        dur = min(lognorm(r, 6 * H, 0.6), tr.t1 - start)
+        port = r.choice([3333, 3334, 4444, 5555, 5556, 7777, 7778, 8220, 10128, 14444, 442, 443, 80])
+        # ~41 packets/min of ~105 B each way over one long connection
+        tr.conn(start, ent, ip, port, dur, dur * lognorm(r, 70, 0.3), dur * lognorm(r, 75, 0.3), step=60)
+        end = start + dur
+    elif fam == "lateral":
+        targets = [f"192.168.{r.randint(0, 3)}.{x}" for x in range(1, 255)]
+        for k, tg in enumerate(r.sample(targets, r.randint(70, 250))):
+            t = start + k * r.uniform(0.05, 0.6)
+            tr.add(t, {"e": "syn", "ent": ent, "sport": r.randint(32768, 60999), "rip": tg, "rport": r.choice([22, 445, 3389, 5900])})
+        for tg in r.sample(targets, r.randint(2, 6)):
+            t = start + r.uniform(60, 600)
+            tr.conn(t, ent, tg, 22, lognorm(r, 300), lognorm(r, 2e5), lognorm(r, 5e4))
+            tr.label(ent, tg, t, t + 600, fam)
+        end = start + 600
+    elif fam == "beacon_backoff":
+        # HTTPS polling that slows down while idle and snaps back when tasked
+        gap, t = r.choice([1, 2, 5]), start
+        for i in range(r.randint(40, 300)):
+            tasked = r.random() < 0.05
+            tr.conn(t, ent, ip, 443, 0.3, lognorm(r, 3e5 if tasked else 500, 0.5), lognorm(r, 2000, 0.5))
+            end = t
+            gap = 1 if tasked else min(gap * r.uniform(1.1, 1.6), r.choice([30, 60, 300]))
+            t += gap
+            if t > tr.t1:
+                break
+    elif fam == "exfil_rclone":
+        host = r.choice(["mega.nz", "g.api.mega.co.nz", "s3.amazonaws.com", "storage.googleapis.com", "pcloud.com"])
+        tr.resolve(start - 0.2, host, [ip], ent)
+        size = lognorm(r, 4e9, 0.8)
+        rate = r.choice([5e6, 1.2e7, 3e7])  # incl. --bwlimit throttling
+        dur = size / rate
+        for k in range(4):  # 4 parallel transfers
+            tr.conn(start + k * 0.3, ent, ip, 443, dur, size / 4, size / 4 / 400, step=60)
+        end = start + dur
+    elif fam == "heartbeat_c2":
+        # long-lived connection with tiny periodic heartbeats (Mirai: 2 bytes / 60 s; IRC bots)
+        port = r.choice([23, 6667, 9090, 4444, 1337, 8080])
+        dur = min(lognorm(r, 6 * H, 0.6), tr.t1 - start)
+        hb = r.choice([30, 60, 120])
+        tr.conn(start, ent, ip, port, dur, dur / hb * r.choice([2, 60, 120]), dur / hb * r.choice([2, 60, 200]), step=hb)
+        end = start + dur
     elif fam == "spam_bot":
         mx = [tr.pub_ip() for _ in range(r.randint(50, 400))]
         dur = lognorm(r, 3600, 0.6)
@@ -435,7 +636,7 @@ def a_flow(tr, fam, start):
             t += 60
         end = start + dur
     elif fam.startswith("beacon") or fam == "revshell":
-        period = {"beacon_regular": r.choice([5, 10, 30, 60]), "beacon_jitter": r.choice([30, 60, 120, 300]),
+        period = {"beacon_regular": r.choice([2, 5, 10, 30, 60, 60]), "beacon_jitter": r.choice([10, 30, 45, 60, 120, 300]),
                   "beacon_long_sleep": r.choice([600, 900, 1800]), "beacon_named": r.choice([30, 60, 300]),
                   "beacon_tasks": r.choice([10, 60, 120]), "revshell": 0}[fam]
         if fam == "revshell":
@@ -445,7 +646,7 @@ def a_flow(tr, fam, start):
             tr.conn(start, ent, ip, r.choice([4444, 443, 1337, 9001]), dur, lognorm(r, 3e4), lognorm(r, 5e3), step=30, pid=pid)
             end = start + dur
         else:
-            jit = r.uniform(0.1, 0.4) if fam == "beacon_jitter" else r.uniform(0, 0.08)
+            jit = r.uniform(0.1, 0.5) if fam == "beacon_jitter" else r.choice([0.0, 0.0, r.uniform(0, 0.15)])
             port = r.choice([443, 443, 80, 8080, 4444, 8443])
             n = r.randint(12, 200)
             t = start
@@ -468,8 +669,9 @@ def a_dns(tr, fam, start):
     base = f"{rand_word(r)}{r.choice(['', '-cdn', '-api'])}.{r.choice(['com', 'net', 'xyz', 'top', 'info', 'site'])}"
     ent = None if r.random() < 0.7 else attack_entity(tr, fam)
     rate = {"dns_tunnel_fast": r.choice([2, 5, 20]), "dns_tunnel_slow": r.choice([0.05, 0.1, 0.3]),
-            "dns_txt_c2": r.choice([0.1, 0.2, 1]), "dns_exfil_a": r.choice([0.5, 1, 3]), "dns_exfil_b64": r.choice([0.3, 1, 5])}[fam]
-    dur = lognorm(r, {"dns_tunnel_fast": 1200, "dns_tunnel_slow": 7200}.get(fam, 3600), 0.6)
+            "dns_txt_c2": r.choice([0.1, 0.2, 1]), "dns_exfil_a": r.choice([0.5, 1, 3]), "dns_exfil_b64": r.choice([0.3, 1, 5]),
+            "dns_beacon": 1 / r.choice([10, 30, 60, 60, 120]), "dns_idle_poll": r.choice([1, 2, 0.25])}[fam]
+    dur = lognorm(r, {"dns_tunnel_fast": 1200, "dns_tunnel_slow": 7200, "dns_beacon": 6 * 3600}.get(fam, 3600), 0.6)
     n = min(int(rate * dur), 6000)
     t = start
     for i in range(n):
@@ -480,6 +682,12 @@ def a_dns(tr, fam, start):
         elif fam == "dns_txt_c2":
             labels = [r.choice(["", "a", "b"]) + format(r.getrandbits(48), "x"), format(i, "x")]
             qt = 16
+        elif fam == "dns_beacon":
+            labels = [r.choice(["cdn", "www", "api", "www6", "post"]), format(r.getrandbits(32), "x")]
+            qt = r.choice([1, 1, 28, 16])
+        elif fam == "dns_idle_poll":
+            labels = [rbytes(r, r.randint(8, 24)).hex()]
+            qt = r.choice([16, 15, 5, 1, 28])
         elif fam == "dns_exfil_a":
             labels = [rbytes(r, r.randint(12, 31)).hex()[:62]]
             qt = r.choice([1, 28])
@@ -488,7 +696,10 @@ def a_dns(tr, fam, start):
             qt = 1
         name = ".".join(l for l in labels if l) + "." + base
         tr.add(t, {"e": "dns", "ent": ent, "name": name, "qtype": qt})
-        t += r.expovariate(rate)
+        if fam == "dns_beacon":
+            t += (1 / rate) * (1 + r.uniform(-0.2, 0.2))  # timer-driven
+        else:
+            t += r.expovariate(rate)
         if t > tr.t1:
             break
     tr.label(ent or "?", base, start, t + 60, fam)
@@ -497,7 +708,7 @@ def a_dns(tr, fam, start):
 
 def make_trace(i, seed, hold):
     r = random.Random(seed * 100_003 + i)
-    hours = r.choice([8, 12, 24, 36, 48])
+    hours = r.choice([8, 12, 24, 36, 48, 72, 96])
     t0 = 1_780_000_000 + r.randint(0, 200) * 86400 + r.randint(0, 86399)
     caps = (True, True, True) if r.random() < 0.8 else (False, False, False)
     tr = Trace(r, t0, hours, caps)
@@ -520,7 +731,7 @@ def run_one(args):
     i, seed, out_dir, learn = args
     tr, fams = make_trace(i, seed, None)
     rows = os.path.join(out_dir, f"t{i:05d}.rows.jsonl")
-    p = subprocess.Popen([RATEL, "watch", "--replay", "-", "--emit", rows, "--learn-hours", str(learn), "--json"],
+    p = subprocess.Popen([RATEL, "watch", "--replay", "-", "--emit", rows, "--emit-thin", "15", "--learn-hours", str(learn), "--json"],
                          stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, text=True)
     body = "\n".join(json.dumps(d, separators=(",", ":")) for _, d in tr.ev) + "\n"
     alerts, _ = p.communicate(body)
@@ -537,10 +748,11 @@ def main():
     ap.add_argument("--seed", type=int, default=1)
     ap.add_argument("--jobs", type=int, default=os.cpu_count())
     ap.add_argument("--learn-hours", type=float, default=24)
+    ap.add_argument("--start", type=int, default=0, help="first trace index (to add traces to an existing set)")
     a = ap.parse_args()
     os.makedirs(a.out, exist_ok=True)
     with ProcessPoolExecutor(a.jobs) as ex:
-        n = sum(ex.map(run_one, [(i, a.seed, a.out, a.learn_hours) for i in range(a.n)]))
+        n = sum(ex.map(run_one, [(i, a.seed, a.out, a.learn_hours) for i in range(a.start, a.start + a.n)]))
     print(f"{a.n} traces, {n} events -> {a.out}")
 
 

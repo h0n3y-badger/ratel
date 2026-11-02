@@ -1,0 +1,16 @@
+{
+ "flow": {
+  "max_iter": 800,
+  "max_depth": 4,
+  "learning_rate": 0.1,
+  "min_samples_leaf": 80,
+  "l2_regularization": 1.0
+ },
+ "dns": {
+  "max_iter": 160,
+  "max_depth": 4,
+  "learning_rate": 0.1,
+  "min_samples_leaf": 80,
+  "l2_regularization": 1.0
+ }
+}

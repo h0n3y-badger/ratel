@@ -8,7 +8,7 @@ the traffic never leaves the namespace. Scenarios: bulk upload to a new host,
 DNS tunnel, beaconing, reverse shell, ICMP tunnel, port scan, plus benign
 traffic that must NOT alert (a download, normal DNS, a few web-like requests).
 """
-import json, os, socket, subprocess, sys, threading, time
+import json, os, shutil, socket, subprocess, sys, threading, time
 
 ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 RATEL = os.path.join(ROOT, "target", "release", "ratel")
@@ -84,7 +84,7 @@ import shutil; shutil.copy(os.path.join(ROOT, "data/synth/bin/s1_000066"), SCAN 
 
 state = "/tmp/ratel-sbx-state"
 os.makedirs(state, exist_ok=True)
-for f in os.listdir(state): os.remove(os.path.join(state, f))
+shutil.rmtree(state, ignore_errors=True); os.makedirs(state)
 w = subprocess.Popen([RATEL, "watch", "--loopback", "--learn-hours", "0", "--json", "--duration", "200",
                       "--state", state, "--interval", "1", "--no-scan-exes", "--record", "/tmp/ratel-sbx-events.jsonl",
                       "--log", "/tmp/ratel-sbx-alerts.jsonl", "--scan-path", SCAN, "--scan-every", "1"],
@@ -123,16 +123,30 @@ for i in range(12):
     except OSError: pass
     time.sleep(5.5)
 
+time.sleep(30)
+st = subprocess.run([RATEL, "status", "--state", state], capture_output=True, text=True)
+print("--- ratel status (while running):\n" + st.stdout + st.stderr)
 out, _ = w.communicate()
 alerts = [json.loads(l) for l in out.splitlines() if l.startswith("{")]
 for a in alerts:
     print(f"{a['severity']:6s} {a['kind']:8s} {a['title']}")
     for e in a["evidence"]: print("        -", e)
 time.sleep(1)
+al = subprocess.run([RATEL, "alerts", "--log", "/tmp/ratel-sbx-alerts.jsonl", "--min", "medium"], capture_output=True, text=True)
+print("--- ratel alerts:\n" + al.stdout + al.stderr)
+inc = sorted(f[:-6] for f in os.listdir(state + "/incidents"))
+exf = [i for i in inc if "exfil" in i]
+if exf:
+    ex = subprocess.run([RATEL, "explain", exf[0], "--state", state], capture_output=True, text=True)
+    print("--- ratel explain " + exf[0] + ":\n" + ex.stdout + ex.stderr)
+bea = [i for i in inc if "beacon" in i]
+if bea:
+    ak = subprocess.run([RATEL, "ack", bea[0], "--fp", "--note", "test", "--state", state], capture_output=True, text=True)
+    print("--- ratel ack --fp:\n" + ak.stdout + ak.stderr)
 print(f"--- {len(received)} XMPP message(s) via the notify socket; first one:")
 print(received[0] if received else "(none)")
 kinds = {a["kind"] for a in alerts}
 want = {"exfil", "dns", "process", "icmp", "scan", "beacon", "file"}
 bad = [a for a in alerts if WEB in a["dest"] or "example.org" in a["dest"]]
 print("missing:", sorted(want - kinds) or "none", "| false alerts on benign:", len(bad))
-sys.exit(0 if want <= kinds and not bad and received else 1)
+sys.exit(0 if want <= kinds and not bad and received and exf else 1)

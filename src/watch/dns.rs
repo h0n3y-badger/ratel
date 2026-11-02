@@ -134,9 +134,358 @@ pub fn entropy(s: &str) -> f32 {
     }).sum()
 }
 
+/// Deterministic, std-only fuzzing helpers shared by the parser tests in
+/// dns.rs, capture.rs and diag.rs.
+#[cfg(test)]
+pub(super) mod fuzz {
+    /// xorshift64: tiny, deterministic, good enough to drive mutations.
+    pub struct Rng(pub u64);
+
+    impl Rng {
+        pub fn next(&mut self) -> u64 {
+            let mut x = self.0;
+            x ^= x << 13;
+            x ^= x >> 7;
+            x ^= x << 17;
+            self.0 = x;
+            x
+        }
+        pub fn below(&mut self, n: usize) -> usize {
+            if n == 0 { 0 } else { (self.next() % n as u64) as usize }
+        }
+        pub fn chance(&mut self, one_in: u64) -> bool {
+            self.next() % one_in == 0
+        }
+        pub fn bytes(&mut self, max_len: usize) -> Vec<u8> {
+            let n = self.below(max_len + 1);
+            (0..n).map(|_| self.next() as u8).collect()
+        }
+        /// A "length-like" value: boundaries, small, near `around`, or random.
+        pub fn interesting(&mut self, around: usize) -> u32 {
+            match self.below(8) {
+                0 => 0,
+                1 => 1,
+                2 => u32::MAX,
+                3 => [0x7f, 0x80, 0xff, 0x100, 0x3fff, 0x7fff, 0x8000, 0xffff][self.below(8)],
+                4 => (around as u32).wrapping_add(self.below(9) as u32).wrapping_sub(4),
+                5 => self.below(64) as u32,
+                _ => self.next() as u32,
+            }
+        }
+    }
+
+    /// Generic mutations: bit flips, byte sets, truncation, extension,
+    /// insert/delete, chunk duplication and length-field-like overwrites.
+    /// `be` picks the byte order of overwritten 16/32-bit fields.
+    pub fn mutate(r: &mut Rng, b: &mut Vec<u8>, be: bool) {
+        for _ in 0..1 + r.below(4) {
+            let n = b.len();
+            match r.below(9) {
+                0 if n > 0 => {
+                    let i = r.below(n);
+                    b[i] ^= 1 << r.below(8);
+                }
+                1 if n > 0 => {
+                    let i = r.below(n);
+                    b[i] = [0, 0xff, 0x7f, 0x80, 0xc0, 0x3f, 0x40, r.next() as u8][r.below(8)];
+                }
+                2 => b.truncate(r.below(n + 1)),
+                3 => {
+                    let extra = r.bytes(64);
+                    b.extend_from_slice(&extra);
+                }
+                4 if n > 0 => {
+                    let i = r.below(n);
+                    let k = 1 + r.below(16.min(n - i));
+                    b.drain(i..i + k);
+                }
+                5 => {
+                    let i = r.below(n + 1);
+                    let ins = r.bytes(16);
+                    b.splice(i..i, ins);
+                }
+                6 if n >= 2 => {
+                    let i = r.below(n - 1);
+                    let v = r.interesting(n) as u16;
+                    let v = if be { v.to_be_bytes() } else { v.to_ne_bytes() };
+                    b[i..i + 2].copy_from_slice(&v);
+                }
+                7 if n >= 4 => {
+                    let i = r.below(n - 3);
+                    let v = r.interesting(n);
+                    let v = if be { v.to_be_bytes() } else { v.to_ne_bytes() };
+                    b[i..i + 4].copy_from_slice(&v);
+                }
+                8 if n > 0 && n < 4096 => {
+                    let i = r.below(n);
+                    let k = 1 + r.below(32.min(n - i));
+                    let chunk = b[i..i + k].to_vec();
+                    let at = r.below(n + 1);
+                    b.splice(at..at, chunk);
+                }
+                _ => {}
+            }
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
+    use super::fuzz::{mutate, Rng};
     use super::*;
+    use std::time::Instant;
+
+    /// Upper bound on a parsed name (read_name stops past 300 characters).
+    const MAX_NAME: usize = 300;
+
+    fn query(name: &[&str], qtype: u16) -> Vec<u8> {
+        let mut q = vec![0x12, 0x34, 0x01, 0x00, 0, 1, 0, 0, 0, 0, 0, 0];
+        for l in name {
+            q.push(l.len() as u8);
+            q.extend_from_slice(l.as_bytes());
+        }
+        q.push(0);
+        q.extend_from_slice(&qtype.to_be_bytes());
+        q.extend_from_slice(&[0, 1]);
+        q
+    }
+
+    /// Valid seeds: queries, and responses with compressed / uncompressed
+    /// A, AAAA and CNAME answers.
+    fn seeds() -> Vec<Vec<u8>> {
+        let mut v = vec![query(&["a", "bc", "com"], 1), query(&["www", "example", "co", "uk"], 28)];
+        let long = "x".repeat(63);
+        v.push(query(&[&long, &long, &long, "com"], 16));
+        let mut r = query(&["a", "bc", "com"], 1);
+        r[2] = 0x81;
+        r[3] = 0x80;
+        r[7] = 3;
+        // CNAME a.bc.com -> www.bc.com (compressed suffix), then A and AAAA
+        r.extend_from_slice(&[0xC0, 12, 0, 5, 0, 1, 0, 0, 0, 60, 0, 6, 3, b'w', b'w', b'w', 0xC0, 14]);
+        let cname_at = (r.len() - 6) as u8;
+        r.extend_from_slice(&[0xC0, cname_at, 0, 1, 0, 1, 0, 0, 0, 60, 0, 4, 93, 184, 216, 34]);
+        r.extend_from_slice(&[0xC0, cname_at, 0, 28, 0, 1, 0, 0, 0, 60, 0, 16]);
+        r.extend_from_slice(&[0x20, 0x01, 0x0d, 0xb8, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1]);
+        v.push(r);
+        // uncompressed answer, NXDOMAIN
+        let mut n = query(&["evil", "test"], 1);
+        n[2] = 0x81;
+        n[3] = 0x83;
+        n[7] = 1;
+        n.extend_from_slice(&[4, b'e', b'v', b'i', b'l', 4, b't', b'e', b's', b't', 0, 0, 1, 0, 1, 0, 0, 0, 1, 0, 4, 10, 0, 0, 1]);
+        v.push(n);
+        v
+    }
+
+    /// DNS-aware mutations: compression pointers, section counts, flags, label types.
+    fn dns_specific(r: &mut Rng, m: &mut Vec<u8>) {
+        if m.len() < 12 {
+            return;
+        }
+        match r.below(6) {
+            // compression pointer to itself, to the header, or anywhere
+            0 | 1 if m.len() > 13 => {
+                let at = 12 + r.below(m.len() - 13);
+                let target = match r.below(4) {
+                    0 => at,
+                    1 => 12,
+                    2 => r.below(12),
+                    _ => r.below(m.len() + 4),
+                } as u16;
+                m[at] = 0xC0 | ((target >> 8) as u8 & 0x3F);
+                m[at + 1] = target as u8;
+            }
+            // two pointers chasing each other
+            2 if m.len() > 16 => {
+                let a = 12 + r.below(m.len() - 14);
+                let b = 12 + r.below(m.len() - 14);
+                m[a] = 0xC0;
+                m[a + 1] = b as u8;
+                m[b] = 0xC0;
+                m[b + 1] = a as u8;
+            }
+            // huge or odd section counts (qd/an/ns/ar)
+            3 => {
+                let i = 4 + 2 * r.below(4);
+                let v = [0u16, 1, 2, 32, 33, 0x7fff, 0xffff][r.below(7)];
+                m[i..i + 2].copy_from_slice(&v.to_be_bytes());
+            }
+            // flags: response / opcode / rcode bits
+            4 => {
+                m[2] = r.next() as u8;
+                m[3] = r.next() as u8;
+            }
+            // reserved 0x40/0x80 label types and over-long labels
+            _ if m.len() > 12 => {
+                let at = 12 + r.below(m.len() - 12);
+                m[at] = [0x40, 0x80, 0xBF, 64, 63, 0xFF][r.below(6)];
+            }
+            _ => {}
+        }
+    }
+
+    fn check(m: &DnsMsg) {
+        assert!(m.name.len() <= MAX_NAME, "name too long: {}", m.name.len());
+        assert!(m.name.bytes().all(|c| c.is_ascii_graphic() && !c.is_ascii_uppercase()), "odd name {:?}", m.name);
+        assert!(m.answers.len() <= 32);
+        assert!(m.rcode <= 0xF);
+        let (base, sub) = split_base(&m.name);
+        assert!(base.len() + sub.len() <= m.name.len());
+        assert!(m.name.contains(base) && m.name.contains(sub));
+        let e = entropy(&m.name);
+        assert!(e.is_finite() && (0.0..=8.0).contains(&e), "entropy {e}");
+    }
+
+    #[test]
+    fn fuzz_dns_pointer_loops_terminate() {
+        // header with one question; name starts at 12
+        let hdr = |resp: bool, an: u16| {
+            let mut h = vec![0, 0, if resp { 0x81 } else { 0x01 }, 0x80, 0, 1];
+            h.extend_from_slice(&an.to_be_bytes());
+            h.extend_from_slice(&[0, 0, 0, 0]);
+            h
+        };
+        let mut cases = vec![];
+        // self-reference
+        let mut m = hdr(false, 0);
+        m.extend_from_slice(&[0xC0, 12, 0, 1, 0, 1]);
+        cases.push(m);
+        // two-hop loop
+        let mut m = hdr(false, 0);
+        m.extend_from_slice(&[0xC0, 14, 0xC0, 12, 0, 1, 0, 1]);
+        cases.push(m);
+        // label then pointer back to the label: a.a.a.a... until the cap
+        let mut m = hdr(false, 0);
+        m.extend_from_slice(&[1, b'a', 0xC0, 12, 0, 1, 0, 1]);
+        cases.push(m);
+        // 63-byte label looping: hits the length cap before the jump cap
+        let mut m = hdr(false, 0);
+        m.push(63);
+        m.extend_from_slice(&[b'z'; 63]);
+        m.extend_from_slice(&[0xC0, 12, 0, 1, 0, 1]);
+        cases.push(m);
+        // pointer just past the end, and into the header
+        let mut m = hdr(false, 0);
+        m.extend_from_slice(&[0xC0, 14]);
+        cases.push(m);
+        let mut m = hdr(false, 0);
+        m.extend_from_slice(&[0xC0, 0, 0, 1, 0, 1]);
+        cases.push(m);
+        // valid question, 65535 answers that are all a self-looping pointer
+        let mut m = hdr(true, 0xFFFF);
+        m.extend_from_slice(&[1, b'a', 0, 0, 1, 0, 1]);
+        let at = m.len() as u8;
+        for _ in 0..200 {
+            m.extend_from_slice(&[0xC0, at]);
+        }
+        cases.push(m);
+        // 65535 answers with valid A records: capped at 32
+        let mut m = hdr(true, 0xFFFF);
+        m.extend_from_slice(&[1, b'a', 0, 0, 1, 0, 1]);
+        for i in 0..100u8 {
+            m.extend_from_slice(&[0xC0, 12, 0, 1, 0, 1, 0, 0, 0, 60, 0, 4, 10, 0, 0, i]);
+        }
+        cases.push(m);
+        for (i, c) in cases.iter().enumerate() {
+            let t = Instant::now();
+            for _ in 0..1000 {
+                if let Some(m) = parse(c) {
+                    check(&m);
+                }
+            }
+            assert!(t.elapsed().as_millis() < 2000, "case {i} too slow");
+        }
+        // the loops above yield either nothing or a bounded name
+        assert!(parse(&cases[0]).is_none());
+        assert!(parse(&cases[1]).is_none());
+        assert!(parse(&cases[2]).map_or(true, |m| m.name.len() <= MAX_NAME));
+        assert!(parse(&cases[3]).is_none());
+        assert_eq!(parse(&cases[7]).unwrap().answers.len(), 32);
+        // read_name directly: every start offset of every case terminates
+        for c in &cases {
+            for off in 0..c.len() + 2 {
+                if let Some((n, end)) = read_name(c, off) {
+                    assert!(n.len() <= MAX_NAME);
+                    assert!(end <= c.len());
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn fuzz_dns_parse() {
+        let t = Instant::now();
+        let mut r = Rng(0x9E37_79B9_7F4A_7C15);
+        let seeds = seeds();
+        for s in &seeds {
+            check(&parse(s).expect("seed parses"));
+        }
+        let (mut ok, mut iters) = (0u64, 0u64);
+        // fully random buffers, half of them with a plausible header
+        for _ in 0..400_000 {
+            let mut b = r.bytes(600);
+            if b.len() >= 12 && r.chance(2) {
+                b[2] &= 0x87;
+                b[4] = 0;
+                b[5] = 1;
+            }
+            if let Some(m) = parse(&b) {
+                check(&m);
+                ok += 1;
+            }
+            iters += 1;
+        }
+        // mutations of valid seeds (stacked: mutate a mutant a few times)
+        for _ in 0..250_000 {
+            let mut b = seeds[r.below(seeds.len())].clone();
+            for _ in 0..1 + r.below(4) {
+                if r.chance(2) {
+                    mutate(&mut r, &mut b, true);
+                } else {
+                    dns_specific(&mut r, &mut b);
+                }
+                if let Some(m) = parse(&b) {
+                    check(&m);
+                    ok += 1;
+                }
+                iters += 1;
+            }
+        }
+        // read_name at random offsets of random buffers full of pointers
+        for _ in 0..200_000 {
+            let mut b = r.bytes(300);
+            for _ in 0..r.below(16) {
+                if b.len() >= 2 {
+                    let i = r.below(b.len() - 1);
+                    b[i] |= 0xC0;
+                }
+            }
+            if let Some((n, end)) = read_name(&b, r.below(b.len() + 2)) {
+                assert!(n.len() <= MAX_NAME);
+                assert!(end <= b.len());
+            }
+            iters += 1;
+        }
+        eprintln!("fuzz_dns_parse: {iters} iterations, {ok} parsed, {:?}", t.elapsed());
+        assert!(ok > 1000, "mutations barely reach the parser body");
+    }
+
+    #[test]
+    fn fuzz_split_base_entropy() {
+        let mut r = Rng(0xDEAD_BEEF_CAFE_F00D);
+        let alphabet: Vec<char> = "abc.-.xyz0129.é√日.".chars().collect();
+        let zones = ["co.uk", "duckdns.org", "blob.core.windows.net", "in-addr.arpa", "com", "."];
+        for _ in 0..300_000 {
+            let mut s: String = (0..r.below(80)).map(|_| alphabet[r.below(alphabet.len())]).collect();
+            if r.chance(2) {
+                s.push_str(zones[r.below(zones.len())]);
+            }
+            let (base, sub) = split_base(&s);
+            assert!(s.contains(base) && s.contains(sub));
+            let e = entropy(&s);
+            assert!(e.is_finite() && (0.0..=8.0).contains(&e));
+        }
+    }
 
     #[test]
     fn base_domains() {

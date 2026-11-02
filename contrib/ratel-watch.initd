@@ -9,12 +9,16 @@ name="ratel-watch"
 description="ratel network behaviour monitor (exfiltration, C2, tunnels, scans)"
 command="/usr/local/bin/ratel"
 command_args="watch --config /etc/ratel/watch.conf"
-command_background=true
-pidfile="/run/${RC_SVCNAME}.pid"
+# supervise-daemon restarts it if it dies (ratel also raises a "not stopped cleanly"
+# alert on the next start, so a crash or a kill is never silent)
+supervisor=supervise-daemon
+respawn_delay=5
+respawn_max=10
+respawn_period=3600
 output_log="/var/log/ratel/watch.log"
 error_log="/var/log/ratel/watch.log"
 # lower CPU priority; the packet filter runs in the kernel either way
-start_stop_daemon_args="--nicelevel 10"
+supervise_daemon_args="--nicelevel 10"
 retry="TERM/15/KILL/5"
 
 depend() {
@@ -23,5 +27,5 @@ depend() {
 }
 
 start_pre() {
-	checkpath -d -m 0750 -o root:root /var/lib/ratel /var/log/ratel
+	checkpath -d -m 0750 -o root:root /var/lib/ratel /var/log/ratel /run/ratel
 }

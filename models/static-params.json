@@ -1,0 +1,6 @@
+{
+ "n_estimators": 200,
+ "max_depth": 3,
+ "learning_rate": 0.12,
+ "min_samples_leaf": 6
+}
